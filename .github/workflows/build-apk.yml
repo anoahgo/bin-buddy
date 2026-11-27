@@ -1,0 +1,90 @@
+name: Build Bin Buddy Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install SVG-to-PNG Icon Converter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+
+      - name: Generate PNG Icons & Wire Live Council Feed into APK
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          mkdir -p www assets
+
+          rsvg-convert -w 1024 -h 1024 icon.svg -o assets/icon.png
+          rsvg-convert -w 192 -h 192 icon.svg -o icon-192.png
+          rsvg-convert -w 512 -h 512 icon.svg -o icon-512.png
+
+          cp index.html manifest.webmanifest icon.svg icon-192.png icon-512.png sw.js www/
+          [ -f schedule.json ] && cp schedule.json www/ || true
+
+          FEED_URL="https://${REPO_OWNER}.github.io/${REPO_NAME}/schedule.json"
+          sed -i "s|<meta name=\"bin-buddy-feed-url\" content=\"\" />|<meta name=\"bin-buddy-feed-url\" content=\"${FEED_URL}\" />|g" www/index.html
+
+      - name: Save PNG Icons to Repo (for crisp iPhone 17 Home Screen icon)
+        run: |
+          git config user.name "Bin Buddy Bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add icon-192.png icon-512.png
+          git diff --staged --quiet || git commit -m "Add generated PNG app icons for iOS & Android"
+          git pull --rebase
+          git push
+
+      - name: Build Capacitor Android Project
+        run: |
+          npm init -y
+          npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6 @capacitor/assets
+          npx cap add android
+          npx capacitor-assets generate --android
+          npx cap sync android
+
+      - name: Compile BinBuddy.apk
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../BinBuddy.apk
+
+      - name: Upload BinBuddy.apk Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BinBuddy-Android-APK
+          path: BinBuddy.apk
+
+      - name: Publish Direct Download in GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-apk
+          name: Bin Buddy Android APK (Latest)
+          body: "Download and tap **BinBuddy.apk** below on your Pixel 10 Pro XL to install Bin Buddy!"
+          make_latest: true
+          files: |
+            BinBuddy.apk
