@@ -1,0 +1,2556 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="bin-buddy-feed-url" content="" />
+  <title>Bin Buddy — UK Bin Day App</title>
+
+  <meta name="theme-color" content="#10B981" />
+  <meta name="description" content="Playful UK bin day reminder app with animated kerbside mini-game, live weather atmospheres, and council schedules." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Bin Buddy" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="./icon.svg" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    if (typeof tailwind !== 'undefined') {
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+              display: ['Fredoka', 'Inter', 'sans-serif'],
+            },
+            boxShadow: {
+              'soft': '0 10px 30px -10px rgba(15, 23, 42, 0.12)',
+              'glow': '0 0 0 4px rgba(16, 185, 129, 0.25)',
+            }
+          }
+        }
+      };
+    }
+  </script>
+
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    html { height: auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    body { min-height: 100%; height: auto; overflow-y: auto; overscroll-behavior-y: auto; }
+    .min-h-dvh { min-height: 100vh; min-height: 100dvh; }
+
+    @keyframes binBounce {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      45% { transform: translateY(-5px) rotate(-1.5deg); }
+      75% { transform: translateY(-2px) rotate(1.5deg); }
+    }
+    .animate-bin-idle { animation: binBounce 2.8s ease-in-out infinite; }
+
+    @keyframes binWindSway {
+      0%, 100% { transform: rotate(-2deg) translateX(0); }
+      50% { transform: rotate(3deg) translateX(2px); }
+    }
+    .weather-windy .animate-bin-idle { animation: binWindSway 1.5s ease-in-out infinite; }
+
+    @keyframes lidChatter {
+      0%, 82%, 100% { transform: rotate(0deg); }
+      86% { transform: rotate(-9deg); }
+      90% { transform: rotate(2deg); }
+      94% { transform: rotate(-6deg); }
+    }
+    .bin-lid { transform-origin: 26px 32px; animation: lidChatter 4.2s ease-in-out infinite; }
+
+    @keyframes eyeBlink {
+      0%, 92%, 100% { transform: scaleY(1); }
+      96% { transform: scaleY(0.1); }
+    }
+    .bin-eyes { transform-origin: center 62px; animation: eyeBlink 3.6s ease-in-out infinite; }
+
+    @keyframes kerbPulse {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.03); opacity: 1; }
+    }
+    .animate-kerb-pulse { animation: kerbPulse 1.8s ease-in-out infinite; }
+
+    @keyframes arrowSlide {
+      0%, 100% { transform: translateX(0); opacity: 0.45; }
+      50% { transform: translateX(8px); opacity: 1; }
+    }
+    .animate-arrow-slide { animation: arrowSlide 1.3s ease-in-out infinite; }
+
+    @keyframes cloudDrift {
+      0% { transform: translateX(-10px); }
+      50% { transform: translateX(18px); }
+      100% { transform: translateX(-10px); }
+    }
+    .animate-cloud { animation: cloudDrift 12s ease-in-out infinite; }
+
+    @keyframes notifDrop {
+      0% { transform: translateY(-130%) scale(0.95); opacity: 0; }
+      65% { transform: translateY(6px) scale(1.01); opacity: 1; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+    .animate-notif-drop { animation: notifDrop 0.48s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+    @keyframes dustPuff {
+      0% { transform: scale(0.4) translate(0, 0); opacity: 0.85; }
+      100% { transform: scale(1.5) translate(-16px, -10px); opacity: 0; }
+    }
+    .dust-puff {
+      position: absolute; width: 10px; height: 10px; border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.85); pointer-events: none;
+      animation: dustPuff 0.45s ease-out forwards;
+    }
+
+    @keyframes rainFall {
+      0% { transform: translate3d(0, -24px, 0) rotate(14deg); opacity: 0; }
+      15% { opacity: 0.78; }
+      85% { opacity: 0.78; }
+      100% { transform: translate3d(-34px, 285px, 0) rotate(14deg); opacity: 0; }
+    }
+    .weather-drop {
+      position: absolute; top: -20px; width: 2px; height: 16px; border-radius: 9999px;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.15), rgba(186,230,253,0.92));
+      animation: rainFall var(--dur, 0.9s) linear infinite; animation-delay: var(--delay, 0s);
+    }
+
+    @keyframes snowDrift {
+      0% { transform: translate3d(0, -16px, 0) rotate(0deg); opacity: 0; }
+      12% { opacity: 0.95; }
+      50% { transform: translate3d(16px, 130px, 0) rotate(160deg); opacity: 0.95; }
+      100% { transform: translate3d(-12px, 275px, 0) rotate(320deg); opacity: 0; }
+    }
+    .weather-flake {
+      position: absolute; top: -12px; border-radius: 9999px;
+      background: radial-gradient(circle, #ffffff 35%, rgba(224,242,254,0.85) 100%);
+      box-shadow: 0 0 6px rgba(255,255,255,0.8);
+      animation: snowDrift var(--dur, 4.8s) ease-in-out infinite; animation-delay: var(--delay, 0s);
+    }
+
+    @keyframes leafFlutter {
+      0% { transform: translate3d(-20px, -18px, 0) rotate(0deg); opacity: 0; }
+      12% { opacity: 0.95; }
+      45% { transform: translate3d(42px, 105px, 0) rotate(140deg); }
+      75% { transform: translate3d(8px, 195px, 0) rotate(250deg); opacity: 0.9; }
+      100% { transform: translate3d(55px, 270px, 0) rotate(360deg); opacity: 0; }
+    }
+    .weather-leaf {
+      position: absolute; top: -16px; font-size: var(--size, 14px); line-height: 1;
+      animation: leafFlutter var(--dur, 5.5s) ease-in-out infinite; animation-delay: var(--delay, 0s);
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.18));
+    }
+
+    @keyframes windGust {
+      0% { transform: translate3d(-90px, 0, 0) scaleX(0.7); opacity: 0; }
+      25% { opacity: 0.72; }
+      75% { opacity: 0.65; }
+      100% { transform: translate3d(420px, -8px, 0) scaleX(1.25); opacity: 0; }
+    }
+    .weather-gust {
+      position: absolute; left: -80px; height: 2.5px; border-radius: 9999px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.85), transparent);
+      animation: windGust var(--dur, 1.9s) ease-in-out infinite; animation-delay: var(--delay, 0s);
+    }
+
+    @keyframes sunPulse {
+      0%, 100% { transform: scale(1); opacity: 0.55; }
+      50% { transform: scale(1.18); opacity: 0.85; }
+    }
+    .weather-sun-halo {
+      position: absolute; top: -16px; right: -12px; width: 110px; height: 110px; border-radius: 9999px;
+      background: radial-gradient(circle, rgba(253, 224, 71, 0.65) 0%, rgba(253, 224, 71, 0.15) 55%, transparent 75%);
+      animation: sunPulse 4.2s ease-in-out infinite;
+    }
+
+    @keyframes mistFloat {
+      0%, 100% { transform: translateX(-18px); opacity: 0.35; }
+      50% { transform: translateX(22px); opacity: 0.55; }
+    }
+    .weather-mist {
+      position: absolute; left: -15%; width: 130%; height: 36px; border-radius: 9999px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent);
+      filter: blur(8px); animation: mistFloat 9s ease-in-out infinite;
+    }
+
+    @keyframes festivePop {
+      0% { transform: scale(0.75) translateY(28px); opacity: 0; }
+      65% { transform: scale(1.03) translateY(-4px); opacity: 1; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    .animate-festive-pop { animation: festivePop 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+    @keyframes twinkleBulb {
+      0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px currentColor); transform: scale(1.1); }
+      50% { opacity: 0.4; filter: drop-shadow(0 0 1px currentColor); transform: scale(0.92); }
+    }
+    .festive-bulb { animation: twinkleBulb 1.5s ease-in-out infinite; }
+
+    @keyframes starSparkle {
+      0%, 100% { transform: scale(0.85) rotate(0deg); opacity: 0.55; }
+      50% { transform: scale(1.25) rotate(18deg); opacity: 1; }
+    }
+    .festive-star {
+      position: absolute; font-size: var(--size, 14px);
+      animation: starSparkle var(--dur, 2.2s) ease-in-out infinite; animation-delay: var(--delay, 0s);
+    }
+
+    @keyframes santaSleighFly {
+      0% { transform: translateX(-65px) translateY(4px); opacity: 0; }
+      15% { opacity: 0.95; }
+      50% { transform: translateX(170px) translateY(-10px); opacity: 0.95; }
+      85% { opacity: 0.95; }
+      100% { transform: translateX(410px) translateY(2px); opacity: 0; }
+    }
+    .santa-sleigh {
+      position: absolute; top: 34px; left: 0; font-size: 16px; letter-spacing: -2px;
+      white-space: nowrap; animation: santaSleighFly 9.5s linear infinite;
+    }
+
+    @keyframes starBeamPulse {
+      0%, 100% { opacity: 0.42; transform: scale(1); }
+      50% { opacity: 0.88; transform: scale(1.06); }
+    }
+    .nativity-rays { transform-origin: 160px 24px; animation: starBeamPulse 2.8s ease-in-out infinite; }
+
+    @keyframes mangerGlow {
+      0%, 100% { opacity: 0.55; transform: scale(0.96); }
+      50% { opacity: 0.95; transform: scale(1.08); }
+    }
+    .manger-glow { transform-origin: 160px 118px; animation: mangerGlow 2.4s ease-in-out infinite; }
+
+    @keyframes nativitySnow {
+      0% { transform: translateY(-10px) translateX(0); opacity: 0; }
+      15% { opacity: 0.9; }
+      85% { opacity: 0.85; }
+      100% { transform: translateY(155px) translateX(10px); opacity: 0; }
+    }
+    .nativity-flake {
+      position: absolute; top: -8px; border-radius: 9999px; background: #FFFFFF; pointer-events: none;
+      animation: nativitySnow var(--dur, 4.2s) linear infinite; animation-delay: var(--delay, 0s);
+    }
+
+    @keyframes sheepBob {
+      0%, 100% { transform: translate(56px, 112px) rotate(0deg); }
+      50% { transform: translate(56px, 110px) rotate(-3deg); }
+    }
+    .nativity-sheep { animation: sheepBob 2.6s ease-in-out infinite; }
+
+    @keyframes donkeyNod {
+      0%, 100% { transform: translate(232px, 104px) rotate(0deg); }
+      50% { transform: translate(232px, 103px) rotate(2.5deg); }
+    }
+    .nativity-donkey { animation: donkeyNod 3.1s ease-in-out infinite; }
+
+    @keyframes starTwinkle {
+      0%, 100% { opacity: 0.35; transform: scale(0.85); }
+      50% { opacity: 1; transform: scale(1.25); }
+    }
+    .nativity-star { transform-box: fill-box; transform-origin: center; animation: starTwinkle 2.2s ease-in-out infinite; }
+
+    @keyframes festiveTitleBounce {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-3px) scale(1.03); }
+    }
+    .animate-festive-title { animation: festiveTitleBounce 2.2s ease-in-out infinite; }
+
+    .draggable-bin { touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+    .draggable-bin.dragging { cursor: grabbing; z-index: 30; }
+    .pb-safe { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+    .pt-safe { padding-top: max(0.75rem, env(safe-area-inset-top)); }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans antialiased transition-colors duration-300">
+
+  <canvas id="confettiCanvas" class="fixed inset-0 pointer-events-none z-[70]"></canvas>
+
+  <!-- Christmas Day (25 December) Easter Egg Modal -->
+  <div id="christmasOverlay" style="display: none;" class="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-md items-center justify-center p-3.5 overflow-y-auto">
+    <div id="christmasCard" class="relative w-full max-w-sm rounded-[32px] overflow-hidden bg-gradient-to-b from-red-700 via-red-800 to-emerald-950 text-white shadow-2xl border-2 border-amber-300/70 p-5 text-center animate-festive-pop my-auto">
+      <div class="flex items-center justify-around -mx-4 -mt-3 mb-3 px-2 py-1 border-b border-white/15">
+        <span class="festive-bulb text-amber-300 text-base">●</span>
+        <span class="festive-bulb text-emerald-400 text-base" style="animation-delay: 0.25s;">●</span>
+        <span class="festive-bulb text-rose-300 text-base" style="animation-delay: 0.5s;">●</span>
+        <span class="festive-bulb text-sky-300 text-base" style="animation-delay: 0.75s;">●</span>
+        <span class="festive-bulb text-amber-300 text-base" style="animation-delay: 1.0s;">●</span>
+        <span class="festive-bulb text-emerald-400 text-base" style="animation-delay: 1.25s;">●</span>
+        <span class="festive-bulb text-rose-300 text-base" style="animation-delay: 1.5s;">●</span>
+      </div>
+
+      <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-400/20 text-amber-200 border border-amber-300/40">
+        🌟 25 December • Christmas Day
+      </span>
+
+      <h2 class="font-display font-bold text-3xl sm:text-4xl text-white mt-2 tracking-tight drop-shadow animate-festive-title">
+        Happy Christmas!
+      </h2>
+
+      <div class="relative mt-3 rounded-2xl overflow-hidden border border-amber-300/40 bg-gradient-to-b from-indigo-950 via-blue-950 to-slate-900 shadow-inner">
+        <svg viewBox="0 0 320 155" class="w-full h-auto block" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Animated Christmas Day Nativity scene">
+          <defs>
+            <linearGradient id="starBeamGrad" x1="160" y1="22" x2="160" y2="140" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#FDE047" stop-opacity="0.58"/>
+              <stop offset="60%" stop-color="#FDE047" stop-opacity="0.16"/>
+              <stop offset="100%" stop-color="#FDE047" stop-opacity="0"/>
+            </linearGradient>
+            <radialGradient id="mangerAura" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.9"/>
+              <stop offset="55%" stop-color="#F59E0B" stop-opacity="0.35"/>
+              <stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <circle class="nativity-star" cx="34" cy="24" r="1.6" fill="#FEF08A"/>
+          <circle class="nativity-star" cx="68" cy="40" r="1.3" fill="#FFFFFF" style="animation-delay:0.4s;"/>
+          <circle class="nativity-star" cx="104" cy="18" r="1.7" fill="#FEF08A" style="animation-delay:0.9s;"/>
+          <circle class="nativity-star" cx="218" cy="22" r="1.5" fill="#FFFFFF" style="animation-delay:0.2s;"/>
+          <circle class="nativity-star" cx="256" cy="36" r="1.8" fill="#FEF08A" style="animation-delay:0.7s;"/>
+          <circle class="nativity-star" cx="288" cy="20" r="1.4" fill="#FFFFFF" style="animation-delay:1.2s;"/>
+          <path d="M0 132 Q72 104 150 124 Q235 102 320 128 L320 155 L0 155 Z" fill="#1E293B"/>
+          <path d="M0 140 Q105 126 195 138 Q265 130 320 142 L320 155 L0 155 Z" fill="#0F172A"/>
+          <g class="nativity-rays">
+            <polygon points="160,24 102,140 218,140" fill="url(#starBeamGrad)"/>
+            <circle cx="160" cy="24" r="15" fill="#FDE047" opacity="0.25"/>
+          </g>
+          <path d="M160 7 L163.5 19.5 L176 24 L163.5 28.5 L160 41 L156.5 28.5 L144 24 L156.5 19.5 Z" fill="#FEF08A"/>
+          <circle cx="160" cy="24" r="3.5" fill="#FFFFFF"/>
+          <g>
+            <rect x="92" y="66" width="136" height="72" fill="#3B2314" opacity="0.85"/>
+            <rect x="92" y="66" width="9" height="72" rx="2" fill="#78350F"/>
+            <rect x="219" y="66" width="9" height="72" rx="2" fill="#78350F"/>
+            <path d="M78 72 L160 36 L242 72 L233 80 L160 48 L87 80 Z" fill="#92400E" stroke="#451A03" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M79 71 L160 35 L241 71 L234 73 L160 41 L86 73 Z" fill="#F8FAFC" opacity="0.92"/>
+          </g>
+          <circle class="manger-glow" cx="160" cy="118" r="34" fill="url(#mangerAura)"/>
+          <g class="nativity-sheep" transform="translate(56 112)">
+            <ellipse cx="14" cy="16" rx="11" ry="7.5" fill="#F8FAFC"/>
+            <circle cx="9" cy="12" r="4.5" fill="#F8FAFC"/>
+            <circle cx="15" cy="11" r="5" fill="#F8FAFC"/>
+            <circle cx="20" cy="13" r="4.5" fill="#F8FAFC"/>
+            <ellipse cx="25" cy="15" rx="4.5" ry="3.5" fill="#334155"/>
+            <circle cx="26.5" cy="14.5" r="0.9" fill="#FFFFFF"/>
+            <line x1="9" y1="22" x2="9" y2="27" stroke="#334155" stroke-width="2" stroke-linecap="round"/>
+            <line x1="18" y1="22" x2="18" y2="27" stroke="#334155" stroke-width="2" stroke-linecap="round"/>
+          </g>
+          <g class="nativity-donkey" transform="translate(232 104)">
+            <ellipse cx="18" cy="21" rx="12" ry="8" fill="#94A3B8"/>
+            <path d="M8 16 L3 9 L9 12 L10 5 L14 14 Z" fill="#64748B"/>
+            <ellipse cx="7" cy="18" rx="6" ry="4.5" fill="#94A3B8"/>
+            <ellipse cx="3.5" cy="19" rx="2.8" ry="2.2" fill="#CBD5E1"/>
+            <circle cx="6.5" cy="16.5" r="1" fill="#0F172A"/>
+            <line x1="12" y1="27" x2="12" y2="35" stroke="#475569" stroke-width="2.2" stroke-linecap="round"/>
+            <line x1="24" y1="27" x2="24" y2="35" stroke="#475569" stroke-width="2.2" stroke-linecap="round"/>
+          </g>
+          <g>
+            <path d="M108 138 Q112 96 127 92 Q137 96 141 138 Z" fill="#2563EB"/>
+            <path d="M116 95 Q126 80 135 95 L133 114 Q124 108 117 114 Z" fill="#DBEAFE"/>
+            <circle cx="126" cy="91" r="7.5" fill="#FDE68A"/>
+            <circle cx="129" cy="90.5" r="1" fill="#1E293B"/>
+          </g>
+          <g>
+            <line x1="210" y1="74" x2="213" y2="138" stroke="#A16207" stroke-width="2.6" stroke-linecap="round"/>
+            <path d="M180 138 Q183 92 195 86 Q207 92 208 138 Z" fill="#92400E"/>
+            <path d="M185 88 Q195 75 205 88 L203 106 Q195 101 186 106 Z" fill="#D97706"/>
+            <circle cx="194" cy="84" r="7.5" fill="#FDE68A"/>
+            <path d="M188 86 Q194 94 200 86 Q197 92 194 92 Q191 92 188 86 Z" fill="#78350F"/>
+            <circle cx="191.5" cy="83.5" r="1" fill="#1E293B"/>
+          </g>
+          <g>
+            <circle cx="160" cy="113" r="10.5" fill="none" stroke="#FDE047" stroke-width="1.8" opacity="0.9"/>
+            <ellipse cx="160" cy="121" rx="16" ry="5.5" fill="#FACC15"/>
+            <ellipse cx="161" cy="119" rx="10" ry="5" fill="#FFFFFF"/>
+            <circle cx="156" cy="116" r="4.5" fill="#FDE68A"/>
+            <path d="M144 120 H176 L172 131 H148 Z" fill="#B45309" stroke="#78350F" stroke-width="1.5"/>
+            <line x1="149" y1="128" x2="145" y2="139" stroke="#78350F" stroke-width="2.8" stroke-linecap="round"/>
+            <line x1="171" y1="128" x2="175" y2="139" stroke="#78350F" stroke-width="2.8" stroke-linecap="round"/>
+            <line x1="152" y1="138" x2="168" y2="128" stroke="#78350F" stroke-width="2" stroke-linecap="round"/>
+            <line x1="168" y1="138" x2="152" y2="128" stroke="#78350F" stroke-width="2" stroke-linecap="round"/>
+          </g>
+        </svg>
+
+        <div class="absolute inset-0 pointer-events-none overflow-hidden">
+          <span class="nativity-flake w-1.5 h-1.5" style="left:12%; --dur:3.8s; --delay:-0.5s;"></span>
+          <span class="nativity-flake w-1 h-1" style="left:28%; --dur:4.6s; --delay:-1.7s;"></span>
+          <span class="nativity-flake w-1.5 h-1.5" style="left:46%; --dur:4.1s; --delay:-2.9s;"></span>
+          <span class="nativity-flake w-1 h-1" style="left:66%; --dur:3.9s; --delay:-0.8s;"></span>
+          <span class="nativity-flake w-1.5 h-1.5" style="left:82%; --dur:4.8s; --delay:-2.1s;"></span>
+          <span class="nativity-flake w-1 h-1" style="left:92%; --dur:3.5s; --delay:-1.2s;"></span>
+        </div>
+
+        <div id="christmasBinAvatar" class="absolute bottom-1 right-2 pointer-events-none drop-shadow-lg"></div>
+      </div>
+
+      <p class="text-xs sm:text-sm text-amber-100/95 mt-3 leading-relaxed">
+        No wheeling bins out today! Wishing you a peaceful, joyful Christmas — we’ll keep an eye on your festive collection shifts. 🥧✨
+      </p>
+
+      <div class="mt-4 flex flex-col gap-2">
+        <button id="christmasCelebrateBtn" type="button" class="w-full py-3 px-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-display font-bold text-sm sm:text-base tracking-wide shadow-lg transition active:scale-95">
+          🎄 HAPPY CHRISTMAS 🎶
+        </button>
+        <button id="closeChristmasBtn" type="button" class="w-full py-2.5 px-4 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition active:scale-95">
+          Back to Bin Buddy
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="liveNotificationContainer" class="fixed top-3 left-0 right-0 z-50 flex justify-center px-3 pointer-events-none"></div>
+  <div id="toastContainer" class="fixed bottom-24 left-0 right-0 z-50 flex justify-center px-4 pointer-events-none"></div>
+
+  <div class="max-w-md mx-auto min-h-dvh bg-slate-50 dark:bg-slate-900 shadow-2xl relative flex flex-col border-x border-slate-200/70 dark:border-slate-800/70 overflow-x-clip">
+
+    <!-- Top App Bar -->
+    <header class="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 px-4 py-3 pt-safe">
+      <div class="flex items-center justify-between gap-2">
+        <button id="headerCouncilBtn" type="button" class="flex items-center gap-2.5 text-left group rounded-2xl p-1 -m-1 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-md shrink-0 group-hover:scale-105 transition">
+            <span id="headerBrandEmoji" class="text-xl" aria-hidden="true">🗑️</span>
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <h1 class="font-display font-bold text-lg leading-tight tracking-tight text-slate-900 dark:text-white">Bin Buddy</h1>
+              <span class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300">UK</span>
+            </div>
+            <p id="headerCouncilLabel" class="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[175px] sm:max-w-[215px]">
+              Barnsley Council • S74 9BG
+            </p>
+          </div>
+        </button>
+
+        <div class="flex items-center gap-1.5 shrink-0">
+          <div id="streakPill" title="Bin Day Streak" class="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-bold text-xs shadow-sm">
+            <span>🔥</span>
+            <span id="streakCount">0</span>
+          </div>
+          <button id="soundToggleBtn" type="button" aria-label="Toggle sound effects" class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-base transition active:scale-95">
+            🔊
+          </button>
+          <button id="themeToggleBtn" type="button" aria-label="Toggle dark mode" class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-base transition active:scale-95">
+            🌙
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Scrollable Viewport -->
+    <main id="mainContent" class="flex-1 px-4 pt-4 pb-28 space-y-4">
+
+      <!-- ==================== TAB 1: HOME & MINI-GAME ==================== -->
+      <section id="tab-home" class="tab-panel space-y-4">
+
+        <div id="sampleModeBanner" class="rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-300/80 dark:border-amber-700/70 px-3.5 py-2.5 flex items-center justify-between gap-2.5 shadow-sm">
+          <div class="min-w-0">
+            <p class="text-xs font-extrabold text-amber-900 dark:text-amber-200 leading-tight">⚠️ Sample Preview — Not Today’s Real Bins</p>
+            <p class="text-[11px] text-amber-800 dark:text-amber-300/90 leading-snug mt-0.5">Connect your live GitHub <code class="font-bold">schedule.json</code> or council API to load official dates.</p>
+          </div>
+          <button id="bannerConnectBtn" type="button" class="shrink-0 px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-[11px] font-extrabold transition active:scale-95">
+            Connect
+          </button>
+        </div>
+
+        <div id="christmasRibbon" class="hidden rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-emerald-700 text-white px-3.5 py-2.5 shadow-md flex items-center justify-between gap-2">
+          <div class="text-xs font-bold flex items-center gap-1.5 min-w-0">
+            <span class="text-base shrink-0">🎄</span>
+            <span class="truncate">Happy Christmas from Bin Buddy!</span>
+          </div>
+          <button id="replayChristmasBtn" type="button" class="text-[11px] font-extrabold px-2.5 py-1 rounded-xl bg-amber-400 text-slate-950 hover:bg-amber-300 transition active:scale-95 shrink-0">
+            🌟 HAPPY CHRISTMAS
+          </button>
+        </div>
+
+        <div id="heroCard" class="rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-soft p-4 sm:p-5 relative overflow-hidden">
+          <div id="heroGlow" class="absolute -top-12 -right-12 w-40 h-40 rounded-full opacity-20 blur-2xl pointer-events-none bg-emerald-400"></div>
+          <div class="relative z-10">
+            <div class="flex items-start justify-between gap-2 mb-3">
+              <div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span id="countdownBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
+                    📅 Next Bin Day • Before 06:00
+                  </span>
+                  <span id="heroSyncBadge" class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
+                    ⚠️ Sample Data
+                  </span>
+                </div>
+                <h2 id="nextDateHeading" class="font-display font-bold text-2xl sm:text-[26px] text-slate-900 dark:text-white mt-2 leading-tight">
+                  Friday, 27 Nov
+                </h2>
+                <p id="nextBinSummary" class="text-sm text-slate-600 dark:text-slate-300 mt-0.5 font-medium">
+                  Blue Bin &amp; Green Bin due
+                </p>
+              </div>
+              <button id="quickNotifTestBtn" type="button" title="Preview reminder alert" class="shrink-0 px-3 py-2 rounded-2xl bg-slate-100 dark:bg-slate-700/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5 transition active:scale-95">
+                <span>🔔</span>
+                <span class="hidden sm:inline">Test Alert</span>
+              </button>
+            </div>
+            <div id="heroBinChips" class="flex flex-wrap gap-2 mt-3"></div>
+          </div>
+        </div>
+
+        <!-- Wheel It to the Kerb Mini-Game -->
+        <div class="rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-soft overflow-hidden">
+          <div class="px-4 pt-4 pb-2 flex items-center justify-between gap-2">
+            <div>
+              <h3 class="font-display font-bold text-base sm:text-lg text-slate-900 dark:text-white flex items-center gap-1.5">
+                <span>🛣️</span> Wheel It to the Kerb!
+              </h3>
+              <p id="gameInstruction" class="text-xs text-slate-500 dark:text-slate-400">
+                Drag each bin from your drive onto the kerbside zone.
+              </p>
+            </div>
+            <div id="gameProgressPill" class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 shrink-0">
+              0 / 2 out
+            </div>
+          </div>
+
+          <div id="streetArena" class="relative mx-3 mb-2.5 h-64 sm:h-72 rounded-2xl overflow-hidden border-2 border-slate-200 dark:border-slate-700 select-none bg-gradient-to-b from-sky-300 via-sky-200 to-emerald-100 dark:from-indigo-950 dark:via-slate-800 dark:to-slate-900 transition-all duration-700">
+            <button id="weatherBadgeBtn" type="button" title="Switch between live local weather and seasonal scenes" class="absolute top-2.5 left-2.5 z-30 cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-white/90 dark:bg-slate-900/85 text-slate-800 dark:text-slate-100 shadow-sm backdrop-blur-md border border-white/60 dark:border-slate-700 hover:scale-[1.03] active:scale-95 transition">
+              <span id="weatherBadgeIcon">🍂</span>
+              <span id="weatherBadgeText">Live Weather…</span>
+              <span class="opacity-60 text-[9px]">▾</span>
+            </button>
+
+            <div class="absolute top-4 left-1/3 w-16 h-5 rounded-full bg-white/80 dark:bg-slate-500/40 blur-[1px] animate-cloud pointer-events-none transition-colors duration-500"></div>
+            <div class="absolute top-8 right-1/4 w-12 h-4 rounded-full bg-white/65 dark:bg-slate-500/35 blur-[1px] animate-cloud pointer-events-none transition-colors duration-500" style="animation-delay: -4s;"></div>
+            <div id="skyOrb" class="absolute top-3 right-4 w-9 h-9 rounded-full bg-amber-300 dark:bg-amber-100 shadow-lg shadow-amber-300/50 dark:shadow-amber-100/20 pointer-events-none flex items-center justify-center text-sm transition-all duration-500">
+              <span id="skyOrbEmoji">☀️</span>
+            </div>
+
+            <svg class="absolute left-1 bottom-16 w-24 h-28 pointer-events-none drop-shadow-sm" viewBox="0 0 110 130" fill="none" aria-hidden="true">
+              <rect x="74" y="12" width="14" height="26" rx="2" fill="#991B1B"/>
+              <path d="M8 52 L55 14 L102 52 Z" fill="#475569" stroke="#334155" stroke-width="3" stroke-linejoin="round"/>
+              <path id="houseSnowCap" class="hidden" d="M8 52 L55 14 L102 52 L93 52 L55 21 L17 52 Z" fill="#F8FAFC" opacity="0.95"/>
+              <rect x="16" y="50" width="78" height="72" rx="4" fill="#DC6843"/>
+              <rect x="28" y="82" width="22" height="40" rx="3" fill="#0F766E"/>
+              <circle cx="45" cy="103" r="2.2" fill="#FDE047"/>
+              <rect x="58" y="62" width="24" height="20" rx="3" fill="#FEF08A" stroke="#FFFFFF" stroke-width="2.5"/>
+              <line x1="70" y1="62" x2="70" y2="82" stroke="#FFFFFF" stroke-width="2"/>
+              <line x1="58" y1="72" x2="82" y2="72" stroke="#FFFFFF" stroke-width="2"/>
+              <g id="houseFestiveDecor" class="hidden">
+                <path d="M16 54 Q35 59 55 54 Q75 59 94 54" stroke="#1E293B" stroke-width="1.4" fill="none"/>
+                <circle class="festive-bulb" cx="22" cy="56" r="2.8" fill="#EF4444" style="color:#EF4444;"/>
+                <circle class="festive-bulb" cx="34" cy="58" r="2.8" fill="#FACC15" style="color:#FACC15; animation-delay:0.3s;"/>
+                <circle class="festive-bulb" cx="46" cy="56" r="2.8" fill="#22C55E" style="color:#22C55E; animation-delay:0.6s;"/>
+                <circle class="festive-bulb" cx="58" cy="56" r="2.8" fill="#38BDF8" style="color:#38BDF8; animation-delay:0.9s;"/>
+                <circle class="festive-bulb" cx="70" cy="58" r="2.8" fill="#EF4444" style="color:#EF4444; animation-delay:1.1s;"/>
+                <circle class="festive-bulb" cx="82" cy="56" r="2.8" fill="#FACC15" style="color:#FACC15; animation-delay:0.4s;"/>
+                <circle class="festive-bulb" cx="91" cy="55" r="2.6" fill="#22C55E" style="color:#22C55E; animation-delay:0.75s;"/>
+                <circle cx="39" cy="94" r="5.5" stroke="#16A34A" stroke-width="3" fill="none"/>
+                <circle cx="39" cy="89" r="1.8" fill="#EF4444"/>
+              </g>
+              <circle id="houseBush1" cx="14" cy="118" r="10" fill="#16A34A"/>
+              <circle id="houseBush2" cx="24" cy="120" r="8" fill="#22C55E"/>
+            </svg>
+
+            <svg id="streetNativityScene" class="hidden absolute left-[5.6rem] bottom-[4.7rem] w-16 h-16 pointer-events-none drop-shadow-md z-[8]" viewBox="0 0 84 82" fill="none" aria-hidden="true">
+              <circle cx="42" cy="56" r="24" fill="#FDE047" opacity="0.28"/>
+              <path d="M42 4 L44 12 L52 14 L44 16 L42 24 L40 16 L32 14 L40 12 Z" fill="#FEF08A"/>
+              <rect x="14" y="38" width="56" height="36" fill="#451A03" opacity="0.88"/>
+              <path d="M6 40 L42 20 L78 40 L73 44 L42 27 L11 44 Z" fill="#92400E" stroke="#FEF08A" stroke-width="1.2"/>
+              <path d="M7 39 L42 19 L77 39 L72 40 L42 23 L12 40 Z" fill="#F8FAFC" opacity="0.9"/>
+              <path d="M22 74 Q24 52 30 50 Q35 52 36 74 Z" fill="#3B82F6"/>
+              <circle cx="29" cy="49" r="3.5" fill="#FDE68A"/>
+              <path d="M48 74 Q49 49 55 47 Q61 49 62 74 Z" fill="#B45309"/>
+              <circle cx="55" cy="46" r="3.5" fill="#FDE68A"/>
+              <circle cx="42" cy="61" r="6" fill="#FEF08A" opacity="0.5"/>
+              <ellipse cx="42" cy="65" rx="7" ry="3" fill="#FACC15"/>
+              <circle cx="41" cy="62" r="2.4" fill="#FDE68A"/>
+              <path d="M35 65 H49 L47 73 H37 Z" fill="#92400E"/>
+            </svg>
+
+            <div id="gardenHedge" class="absolute bottom-20 left-0 right-0 h-5 bg-emerald-500/80 dark:bg-emerald-900/70 border-t border-emerald-600/30 pointer-events-none transition-colors duration-700"></div>
+
+            <div id="pavementGround" class="absolute bottom-10 left-0 right-0 h-14 bg-stone-300 dark:bg-stone-700 border-t-2 border-stone-400/60 dark:border-stone-600 pointer-events-none transition-colors duration-700">
+              <div class="w-full h-full opacity-25" style="background-image: repeating-linear-gradient(90deg, transparent, transparent 42px, #44403c 42px, #44403c 44px);"></div>
+              <div id="rainPuddle" class="hidden absolute bottom-2 left-[46%] w-16 h-3 rounded-full bg-sky-300/50 dark:bg-sky-400/30 blur-[1px]"></div>
+            </div>
+
+            <div class="absolute bottom-8 left-0 right-0 h-2.5 bg-stone-400 dark:bg-stone-500 border-y border-stone-500/40 pointer-events-none"></div>
+
+            <div class="absolute bottom-0 left-0 right-0 h-8 bg-slate-700 dark:bg-slate-950 pointer-events-none flex items-center justify-around px-4">
+              <div class="w-8 h-1 rounded-full bg-white/70"></div>
+              <div class="w-8 h-1 rounded-full bg-white/70"></div>
+              <div class="w-8 h-1 rounded-full bg-white/70"></div>
+              <div class="w-8 h-1 rounded-full bg-white/70"></div>
+            </div>
+
+            <div id="drivewayGuideLabel" class="absolute bottom-[10.8rem] left-3 text-[10px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 bg-white/80 dark:bg-slate-900/80 px-2 py-0.5 rounded-full shadow-sm pointer-events-none">
+              Driveway
+            </div>
+
+            <div id="swipeHint" class="absolute bottom-[5.2rem] left-[42%] -translate-x-1/2 flex items-center gap-1 text-slate-700 dark:text-slate-200 pointer-events-none animate-arrow-slide">
+              <span class="text-xs font-bold bg-white/80 dark:bg-slate-800/80 px-2 py-0.5 rounded-full shadow-sm">Drag ➔</span>
+            </div>
+
+            <div id="kerbDropZone" class="absolute right-2.5 bottom-10 w-[36%] h-36 rounded-2xl border-2 border-dashed border-emerald-600/80 dark:border-emerald-400/80 bg-emerald-400/20 dark:bg-emerald-500/15 flex flex-col items-center justify-start pt-2 px-1 transition-all duration-200 animate-kerb-pulse pointer-events-none">
+              <span id="kerbZoneLabel" class="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wide text-emerald-900 dark:text-emerald-200 bg-white/85 dark:bg-slate-900/85 px-2 py-0.5 rounded-full shadow-sm text-center leading-tight">
+                Kerbside Zone
+              </span>
+              <span id="kerbZoneSub" class="text-[10px] font-semibold text-emerald-900/90 dark:text-emerald-200/90 mt-1 text-center leading-tight">
+                Drop bins here!
+              </span>
+            </div>
+
+            <button id="pigeonBuddy" type="button" aria-label="Local pigeon spectator" class="absolute bottom-[5.35rem] right-[38%] z-20 cursor-pointer transition-transform duration-300 hover:scale-110 active:scale-95 focus:outline-none" title="Tap the local pigeon!"></button>
+            <div id="dustLayer" class="absolute inset-0 pointer-events-none overflow-hidden"></div>
+            <div id="draggableBinsLayer" class="absolute inset-0 z-10"></div>
+            <div id="weatherParticles" class="absolute inset-0 pointer-events-none overflow-hidden z-[15]"></div>
+
+            <div id="victoryBanner" class="hidden absolute top-11 left-2.5 right-14 z-20 rounded-2xl bg-emerald-600/95 text-white px-3 py-2 shadow-lg flex items-center gap-2 backdrop-blur-sm">
+              <span class="text-xl shrink-0">🎉</span>
+              <div class="min-w-0">
+                <p class="font-display font-bold text-sm leading-tight">Bins Out &amp; Ready!</p>
+                <p id="victorySubtext" class="text-[11px] text-emerald-100 leading-tight">Next bin day unlocks the day after collection.</p>
+              </div>
+            </div>
+          </div>
+
+          <div id="weatherPickerTray" class="hidden mx-3 mb-3 p-2.5 rounded-2xl bg-slate-100/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+            <div class="flex items-center justify-between gap-2 px-0.5">
+              <p class="text-[11px] font-bold text-slate-700 dark:text-slate-200">Scene Atmosphere</p>
+              <span id="weatherSourceNote" class="text-[10px] font-semibold text-slate-500 dark:text-slate-400">Live local weather + seasonal fallback</span>
+            </div>
+            <div id="weatherModeChips" class="flex flex-wrap gap-1.5 pb-0.5"></div>
+          </div>
+
+          <div class="px-4 pb-4 flex flex-wrap items-center justify-between gap-2">
+            <p id="councilTipText" class="text-xs text-slate-500 dark:text-slate-400 flex-1 min-w-[180px]">
+              💡 <strong>Tip:</strong> Put handles facing the road before 6:00 AM.
+            </p>
+            <div class="flex items-center gap-2">
+              <button id="tapMoveBtn" type="button" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition active:scale-95">
+                Wheel Out ➔
+              </button>
+              <button id="bringInBtn" type="button" class="hidden px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition active:scale-95">
+                ⬅️ Bring Back In
+              </button>
+              <button id="resetGameBtn" type="button" class="hidden px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 text-xs font-bold transition active:scale-95">
+                ↺ Reset
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="binGuideCard" class="rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-soft p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-display font-bold text-base text-slate-900 dark:text-white flex items-center gap-1.5">
+              <span>♻️</span> What Goes In Today's Bins?
+            </h3>
+            <span class="text-[11px] text-slate-400 font-medium">Tap a bin above</span>
+          </div>
+          <div id="binGuideContent" class="space-y-2"></div>
+        </div>
+
+      </section>
+
+      <!-- ==================== TAB 2: FUTURE SCHEDULE ==================== -->
+      <section id="tab-schedule" class="tab-panel hidden space-y-4">
+        <div class="rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-soft p-4">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="font-display font-bold text-xl text-slate-900 dark:text-white">Future Bin Schedule</h2>
+              <p id="scheduleSubtitle" class="text-xs text-slate-500 dark:text-slate-400">Auto-synced 12-week council calendar</p>
+            </div>
+            <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 shrink-0">
+              🔒 Council Feed
+            </span>
+          </div>
+
+          <p class="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/70 rounded-2xl px-3 py-2 mb-3">
+            Future bin days stay locked until the <strong>day after</strong> your current collection is complete.
+          </p>
+
+          <button id="exportIcsScheduleBtn" type="button" class="w-full mb-3 px-3.5 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white text-xs font-bold shadow-sm transition active:scale-[0.98] flex items-center justify-center gap-2">
+            <span>📆</span>
+            <span>Add 12 Weeks to Phone Calendar (.ics)</span>
+          </button>
+
+          <div id="scheduleFilterChips" class="flex gap-2 overflow-x-auto no-scrollbar pb-1"></div>
+        </div>
+
+        <div id="scheduleList" class="space-y-2.5"></div>
+      </section>
+
+      <!-- ==================== TAB 3: REMINDERS & ALERTS ==================== -->
+      <section id="tab-reminders" class="tab-panel hidden space-y-4">
+        <div class="rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white p-5 shadow-soft relative overflow-hidden">
+          <div class="flex items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="font-display font-bold text-lg flex items-center gap-1.5">
+                <span>🔔</span> Rich Bin Reminders
+              </h2>
+              <p class="text-xs text-slate-300">Preview &amp; enable your bin day alerts.</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-1.5 bg-white/10 p-1 rounded-2xl mb-4">
+            <button type="button" data-device="pixel" class="device-preview-btn px-2 py-2 rounded-xl text-[11px] font-bold transition bg-white text-slate-900 shadow">
+              Android
+            </button>
+            <button type="button" data-device="iphone17" class="device-preview-btn px-2 py-2 rounded-xl text-[11px] font-bold transition text-slate-200 hover:bg-white/10">
+              iPhone
+            </button>
+            <button type="button" data-device="iphone12mini" class="device-preview-btn px-2 py-2 rounded-xl text-[11px] font-bold transition text-slate-200 hover:bg-white/10">
+              Compact
+            </button>
+          </div>
+
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-300/80 mb-1.5">📤 Put Bins Out Previews</p>
+          <div class="grid grid-cols-2 gap-2 mb-3">
+            <button id="previewEveNotifBtn" type="button" class="p-2.5 rounded-2xl bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-bold shadow-md transition active:scale-95 flex flex-col items-center gap-0.5">
+              <span class="text-base">🌆</span>
+              <span>Night Before</span>
+            </button>
+            <button id="previewMorningNotifBtn" type="button" class="p-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-md transition active:scale-95 flex flex-col items-center gap-0.5">
+              <span class="text-base">🌅</span>
+              <span>Morning Of</span>
+            </button>
+          </div>
+
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-300/80 mb-1.5">🏡 Bring Bins Back In Previews</p>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="previewBringInEveBtn" type="button" class="p-2.5 rounded-2xl bg-teal-500 hover:bg-teal-400 text-slate-950 text-xs font-bold shadow-md transition active:scale-95 flex flex-col items-center gap-0.5">
+              <span class="text-base">🌇</span>
+              <span>Evening Of</span>
+            </button>
+            <button id="previewBringInMorningBtn" type="button" class="p-2.5 rounded-2xl bg-sky-400 hover:bg-sky-300 text-slate-950 text-xs font-bold shadow-md transition active:scale-95 flex flex-col items-center gap-0.5">
+              <span class="text-base">🌤️</span>
+              <span>Morning After</span>
+            </button>
+          </div>
+
+          <button id="enableRealNotifBtn" type="button" class="mt-3 w-full py-2.5 px-3 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-semibold text-white transition flex items-center justify-center gap-2">
+            <span>📲</span>
+            <span id="realNotifStatusText">Enable Real Device Push Notifications</span>
+          </button>
+        </div>
+
+        <div class="rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-soft p-4 space-y-3">
+          <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Alert Schedule</h3>
+
+          <p class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 pt-1">📤 Putting Bins Out</p>
+
+          <div class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
+            <div class="min-w-0">
+              <p class="font-bold text-sm text-slate-900 dark:text-white">🌆 Evening Before</p>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Animated bin alert the night before</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <input id="eveTimeInput" type="time" value="18:00" class="text-xs font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-1.5 text-slate-800 dark:text-slate-100" />
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input id="eveToggle" type="checkbox" checked class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-300 dark:bg-slate-600 rounded-full peer peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+              </label>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
+            <div class="min-w-0">
+              <p class="font-bold text-sm text-slate-900 dark:text-white">🌅 Morning Of Collection</p>
+              <p id="morningStatusNote" class="text-xs text-slate-500 dark:text-slate-400">Final nudge before the lorry arrives</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <input id="morningTimeInput" type="time" value="05:30" class="text-xs font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-1.5 text-slate-800 dark:text-slate-100" />
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input id="morningToggle" type="checkbox" checked class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-300 dark:bg-slate-600 rounded-full peer peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+              </label>
+            </div>
+          </div>
+
+          <p class="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 pt-2">🏡 Bringing Bins Back In</p>
+
+          <div class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
+            <div class="min-w-0">
+              <p class="font-bold text-sm text-slate-900 dark:text-white">🌇 Evening Of Collection</p>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Reminder to wheel empty bins back in</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <input id="bringInEveTimeInput" type="time" value="18:00" class="text-xs font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-1.5 text-slate-800 dark:text-slate-100" />
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input id="bringInEveToggle" type="checkbox" checked class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-300 dark:bg-slate-600 rounded-full peer peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+              </label>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
+            <div class="min-w-0">
+              <p class="font-bold text-sm text-slate-900 dark:text-white">🌤️ Morning After Collection</p>
+              <p id="bringInMorningStatusNote" class="text-xs text-slate-500 dark:text-slate-400">Friendly nudge so bins aren't left on the kerb</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <input id="bringInMorningTimeInput" type="time" value="08:00" class="text-xs font-bold bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl px-2 py-1.5 text-slate-800 dark:text-slate-100" />
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input id="bringInMorningToggle" type="checkbox" checked class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-300 dark:bg-slate-600 rounded-full peer peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+              </label>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-3 p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60">
+            <div class="min-w-0">
+              <p class="font-bold text-sm text-emerald-900 dark:text-emerald-200">✨ Smart Auto-Skip</p>
+              <p class="text-xs text-emerald-700 dark:text-emerald-300/80">Auto-skips morning-of or morning-after nudges once you've wheeled your bins out or back in!</p>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer shrink-0">
+              <input id="smartSkipToggle" type="checkbox" checked class="sr-only peer">
+              <div class="w-11 h-6 bg-slate-300 dark:bg-slate-600 rounded-full peer peer-checked:bg-emerald-500 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-soft p-4 space-y-2.5">
+          <div>
+            <h3 class="font-display font-bold text-base text-slate-900 dark:text-white flex items-center gap-1.5">
+              <span>📆</span> Universal Phone Calendar Backup
+            </h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+              Works on <strong>every smartphone</strong>. Imports your next 12 bin days with both <strong>Put Out</strong> and <strong>Bring Back In</strong> alarms straight into Apple or Google Calendar.
+            </p>
+          </div>
+          <button id="exportIcsAlertsBtn" type="button" class="w-full py-2.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition active:scale-[0.98] flex items-center justify-center gap-2">
+            <span>⬇️</span>
+            <span>Download Calendar Reminders (.ics)</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ==================== TAB 4: NATIONWIDE UK COUNCILS ==================== -->
+      <section id="tab-council" class="tab-panel hidden space-y-4">
+        <div class="rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-soft p-4 space-y-3">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <h2 class="font-display font-bold text-xl text-slate-900 dark:text-white flex items-center gap-1.5">
+                <span>🇬🇧</span> Find Your UK Council
+              </h2>
+              <p class="text-xs text-slate-500 dark:text-slate-400">
+                Collection days &amp; bin colours are locked to your council feed — never guessed.
+              </p>
+            </div>
+            <span id="councilSourcePill" class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200 shrink-0">
+              📍 Local
+            </span>
+          </div>
+
+          <div class="flex gap-2">
+            <input id="postcodeInput" type="text" placeholder="e.g. S74 9BG, LS1 4DY, EH1 1YZ" maxlength="10" class="flex-1 min-w-0 uppercase font-bold tracking-wide text-sm px-3.5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <button id="lookupPostcodeBtn" type="button" class="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition active:scale-95 shrink-0">
+              Find
+            </button>
+          </div>
+
+          <div id="postcodeNoticeBox" class="hidden rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/70 p-3 text-xs text-amber-900 dark:text-amber-200 space-y-2"></div>
+
+          <div>
+            <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1.5">Built-in UK council profiles:</p>
+            <div id="quickCouncilPills" class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1"></div>
+          </div>
+        </div>
+
+        <div class="rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 shadow-soft p-4 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="font-display font-bold text-base text-slate-900 dark:text-white">Active Council &amp; Schedule</h3>
+            <span id="councilLockBadge" class="text-[11px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-1 rounded-full">
+              ⚠️ Sample Cycle
+            </span>
+          </div>
+
+          <div id="propertyAddressNote" class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+            <strong>No fake street addresses:</strong> Real UK house addresses &amp; exact bin days come straight from your council feed (<code class="font-semibold">schedule.json</code> via GitHub Actions + your private UPRN, or the nationwide <code class="font-semibold">UKBinCollectionData</code> API).
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
+              <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Collection Day</p>
+              <p id="lockedDayLabel" class="font-display font-bold text-base text-slate-900 dark:text-white mt-0.5">Fridays</p>
+            </div>
+            <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
+              <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Put Out Before</p>
+              <p id="lockedTimeLabel" class="font-display font-bold text-base text-slate-900 dark:text-white mt-0.5">06:00 AM</p>
+            </div>
+          </div>
+
+          <div class="pt-1">
+            <p class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2">Council-Assigned Bins:</p>
+            <div id="councilBinsList" class="space-y-2"></div>
+          </div>
+        </div>
+
+        <div class="rounded-3xl bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-900 text-white p-4 shadow-soft space-y-3 border border-emerald-800/40">
+          <div>
+            <h3 class="font-display font-bold text-base flex items-center gap-1.5">
+              <span>⚡</span> Live Council Feed
+            </h3>
+            <p class="text-xs text-slate-300 mt-0.5">
+              Auto-syncs with <code class="px-1 py-0.5 rounded bg-white/10 text-emerald-300">./schedule.json</code> on GitHub Pages, or connect any nationwide UKBinCollectionData API URL below.
+            </p>
+          </div>
+
+          <div class="space-y-2">
+            <input id="liveApiUrlInput" type="url" placeholder="https://your-api.onrender.com/api/bins?..." class="w-full text-xs px-3 py-2.5 rounded-2xl bg-white/10 border border-white/15 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+            <div class="flex gap-2">
+              <button id="connectLiveApiBtn" type="button" class="flex-1 py-2.5 px-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition active:scale-95">
+                Sync Live Feed
+              </button>
+              <button id="resetDemoModeBtn" type="button" class="hidden py-2.5 px-3 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition active:scale-95">
+                Reset
+              </button>
+            </div>
+          </div>
+
+          <p id="liveConnectorStatus" class="text-[11px] text-emerald-200/90">
+            Ready to sync with ./schedule.json on GitHub Pages or a live UK council API.
+          </p>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Bottom App Navigation Bar -->
+    <nav class="fixed bottom-0 left-0 right-0 z-40">
+      <div class="max-w-md mx-auto bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 pt-2 pb-safe">
+        <div class="grid grid-cols-4 gap-1">
+          <button type="button" data-tab="home" class="nav-tab-btn flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 transition">
+            <span class="text-xl leading-none">🏠</span>
+            <span class="text-[11px] font-bold mt-1">Bin Day</span>
+          </button>
+          <button type="button" data-tab="schedule" class="nav-tab-btn flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <span class="text-xl leading-none">📅</span>
+            <span class="text-[11px] font-bold mt-1">Schedule</span>
+          </button>
+          <button type="button" data-tab="reminders" class="nav-tab-btn flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <span class="text-xl leading-none">🔔</span>
+            <span class="text-[11px] font-bold mt-1">Alerts</span>
+          </button>
+          <button type="button" data-tab="council" class="nav-tab-btn flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            <span class="text-xl leading-none">🇬🇧</span>
+            <span class="text-[11px] font-bold mt-1">Council</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+  </div>
+
+  <script>
+    const BIN_PALETTES = {
+      grey:   { body: '#64748B', lid: '#475569', light: '#CBD5E1', glow: '#64748B', badge: 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100' },
+      black:  { body: '#334155', lid: '#1E293B', light: '#94A3B8', glow: '#475569', badge: 'bg-slate-800 text-white dark:bg-slate-950 dark:text-slate-100' },
+      blue:   { body: '#2563EB', lid: '#1D4ED8', light: '#93C5FD', glow: '#3B82F6', badge: 'bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-200' },
+      brown:  { body: '#92400E', lid: '#78350F', light: '#FCD34D', glow: '#B45309', badge: 'bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-200' },
+      green:  { body: '#16A34A', lid: '#15803D', light: '#86EFAC', glow: '#22C55E', badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200' },
+      purple: { body: '#7C3AED', lid: '#6D28D9', light: '#C4B5FD', glow: '#8B5CF6', badge: 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200' },
+      red:    { body: '#DC2626', lid: '#B91C1C', light: '#FCA5A5', glow: '#EF4444', badge: 'bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-200' },
+      teal:   { body: '#0D9488', lid: '#0F766E', light: '#99F6E4', glow: '#14B8A6', badge: 'bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-200' },
+      orange: { body: '#EA580C', lid: '#C2410C', light: '#FDBA74', glow: '#F97316', badge: 'bg-orange-100 text-orange-800 dark:bg-orange-900/60 dark:text-orange-200' },
+      yellow: { body: '#EAB308', lid: '#CA8A04', light: '#FEF08A', glow: '#FACC15', badge: 'bg-yellow-100 text-yellow-900 dark:bg-yellow-900/60 dark:text-yellow-200' }
+    };
+
+    const UK_COUNCIL_CUTOFF_TIMES = {
+      barnsley: '06:00', birmingham: '06:00', bradford: '06:30', bristol: '07:00',
+      cardiff: '06:00', cornwall: '07:00', doncaster: '07:00', edinburgh: '06:00',
+      glasgow: '06:00', kirklees: '07:00', leeds: '07:00', liverpool: '06:30',
+      manchester: '07:00', newcastle: '06:30', nottingham: '07:00', rotherham: '07:00',
+      sheffield: '07:00', wakefield: '07:00', westminster: '07:00', york: '07:00'
+    };
+
+    function resolveCouncilCutoffTime(councilName = '', explicitTime = '') {
+      if (explicitTime && /^\d{1,2}:\d{2}/.test(explicitTime)) return explicitTime.slice(0, 5);
+      const lower = String(councilName).toLowerCase();
+      for (const [key, time] of Object.entries(UK_COUNCIL_CUTOFF_TIMES)) {
+        if (lower.includes(key)) return time;
+      }
+      return '06:00';
+    }
+
+    const UK_COUNCILS = {
+      barnsley: {
+        id: 'barnsley', name: 'Barnsley Council', lat: 53.497, lon: -1.441,
+        samplePostcode: 'S74 9BG', putOutBefore: '06:00',
+        tip: 'Barnsley Council collects before 6:00 AM (handles facing road). Bins may go out from 12:00 PM the day before.',
+        addresses: [
+          { id: 'bm-s749bg-1', postcode: 'S74 9BG', collectionDay: 5, cycleOffset: 1 },
+          { id: 'bm-s70-1', postcode: 'S70 1GW', collectionDay: 3, cycleOffset: 2 },
+          { id: 'bm-s71-1', postcode: 'S71 1ND', collectionDay: 4, cycleOffset: 3 },
+          { id: 'bm-s36-1', postcode: 'S36 6BR', collectionDay: 2, cycleOffset: 0 }
+        ],
+        bins: [
+          { id: 'barnsley-grey', name: 'Grey Bin', color: 'grey', freqWeeks: 2, offsetWeeks: 1, summary: 'General household waste', yesItems: ['Non-recyclable rubbish & food waste', 'Polystyrene & crisp packets', 'Nappies & pet waste'], noItems: ['Hot ashes', 'Batteries, vapes or electricals', 'Rubble or paint'] },
+          { id: 'barnsley-blue', name: 'Blue Bin', color: 'blue', freqWeeks: 4, offsetWeeks: 0, summary: 'Paper & cardboard', yesItems: ['Clean dry cardboard (flattened)', 'Newspapers, junk mail & magazines', 'Egg boxes & envelopes'], noItems: ['Greasy pizza boxes', 'Plastic bags or film', 'Tissues or nappies'] },
+          { id: 'barnsley-brown', name: 'Brown Bin', color: 'brown', freqWeeks: 4, offsetWeeks: 2, summary: 'Glass, cans & plastics', yesItems: ['Glass bottles & jars (rinsed)', 'Food tins & drinks cans', 'Plastic bottles, pots, tubs & trays'], noItems: ['Plastic carrier bags or film', 'Broken drinking glass or Pyrex', 'Food waste'] },
+          { id: 'barnsley-green', name: 'Green Bin', color: 'green', freqWeeks: 2, offsetWeeks: 0, activeMonths: [2, 3, 4, 5, 6, 7, 8, 9, 10], seasonLabel: 'Mar–Nov only (Winter pause Dec–Feb)', summary: 'Garden waste', yesItems: ['Grass cuttings & leaves', 'Weeds, cut flowers & hedge trimmings', 'Small twigs & branches'], noItems: ['Food waste (put in Grey bin)', 'Soil, turf or stones', 'Plastic plant pots'] }
+        ]
+      },
+      leeds: {
+        id: 'leeds', name: 'Leeds City Council', lat: 53.799, lon: -1.549,
+        samplePostcode: 'LS1 4DY', putOutBefore: '07:00',
+        tip: 'Leeds bins should be out by 7:00 AM on collection day with lids firmly closed.',
+        addresses: [{ id: 'ld-1', postcode: 'LS1 4DY', collectionDay: 2, cycleOffset: 0 }],
+        bins: [
+          { id: 'leeds-black', name: 'Black Bin', color: 'black', freqWeeks: 2, offsetWeeks: 0, summary: 'General waste', yesItems: ['Non-recyclable household waste', 'Food waste'], noItems: ['Garden waste', 'Electricals'] },
+          { id: 'leeds-green', name: 'Green Bin', color: 'green', freqWeeks: 2, offsetWeeks: 1, summary: 'Mixed recycling', yesItems: ['Paper & card', 'Plastic bottles & tubs', 'Tins, cans & cartons'], noItems: ['Glass bottles (use bottle banks)', 'Nappies'] },
+          { id: 'leeds-brown', name: 'Brown Bin', color: 'brown', freqWeeks: 2, offsetWeeks: 0, activeMonths: [2, 3, 4, 5, 6, 7, 8, 9, 10], seasonLabel: 'Mar–Nov only', summary: 'Garden waste', yesItems: ['Grass, leaves & prunings'], noItems: ['Soil or rubble'] }
+        ]
+      },
+      sheffield: {
+        id: 'sheffield', name: 'Sheffield City Council', lat: 53.381, lon: -1.470,
+        samplePostcode: 'S1 2HH', putOutBefore: '07:00',
+        tip: 'Sheffield collections start from 7:00 AM. Blue bin is for paper/card; brown bin is for glass, cans & plastic.',
+        addresses: [{ id: 'sh-1', postcode: 'S1 2HH', collectionDay: 3, cycleOffset: 0 }],
+        bins: [
+          { id: 'shef-black', name: 'Black Bin', color: 'black', freqWeeks: 2, offsetWeeks: 1, summary: 'General waste', yesItems: ['Household rubbish'], noItems: ['Recyclables', 'Batteries'] },
+          { id: 'shef-blue', name: 'Blue Bin', color: 'blue', freqWeeks: 4, offsetWeeks: 0, summary: 'Paper & cardboard', yesItems: ['Newspapers, letters & cardboard'], noItems: ['Plastic wrap'] },
+          { id: 'shef-brown', name: 'Brown Bin', color: 'brown', freqWeeks: 4, offsetWeeks: 2, summary: 'Cans, glass & plastic bottles', yesItems: ['Glass jars, tins & plastic bottles'], noItems: ['Plastic trays or bags'] }
+        ]
+      },
+      manchester: {
+        id: 'manchester', name: 'Manchester City Council', lat: 53.481, lon: -2.242,
+        samplePostcode: 'M1 1AE', putOutBefore: '07:00',
+        tip: 'Manchester uses Grey (general), Blue (paper/card), Brown (cans/glass/plastic), and Green (food & garden).',
+        addresses: [{ id: 'mc-1', postcode: 'M1 1AE', collectionDay: 1, cycleOffset: 0 }],
+        bins: [
+          { id: 'mcr-grey', name: 'Grey Bin', color: 'grey', freqWeeks: 2, offsetWeeks: 0, summary: 'General rubbish', yesItems: ['Non-recyclable waste'], noItems: ['Food waste'] },
+          { id: 'mcr-green', name: 'Green Bin', color: 'green', freqWeeks: 1, offsetWeeks: 0, summary: 'Food & garden waste', yesItems: ['All food scraps & garden clippings'], noItems: ['Plastic bags'] },
+          { id: 'mcr-blue', name: 'Blue Bin', color: 'blue', freqWeeks: 2, offsetWeeks: 1, summary: 'Paper & card', yesItems: ['Paper, cardboard & envelopes'], noItems: ['Foil or plastic'] },
+          { id: 'mcr-brown', name: 'Brown Bin', color: 'brown', freqWeeks: 2, offsetWeeks: 0, summary: 'Bottles, tins & jars', yesItems: ['Plastic bottles, glass & metal cans'], noItems: ['Yoghurt pots or bags'] }
+        ]
+      },
+      edinburgh: {
+        id: 'edinburgh', name: 'City of Edinburgh Council', lat: 55.953, lon: -3.188,
+        samplePostcode: 'EH1 1YZ', putOutBefore: '06:00',
+        tip: 'Edinburgh bins go out by 6:00 AM. Don’t forget your food caddy goes out weekly!',
+        addresses: [{ id: 'ed-1', postcode: 'EH1 1YZ', collectionDay: 2, cycleOffset: 0 }],
+        bins: [
+          { id: 'edi-grey', name: 'Grey Bin', color: 'grey', freqWeeks: 2, offsetWeeks: 0, summary: 'Non-recyclable waste', yesItems: ['General household rubbish'], noItems: ['Food or garden waste'] },
+          { id: 'edi-green', name: 'Green Bin', color: 'green', freqWeeks: 2, offsetWeeks: 1, summary: 'Mixed recycling', yesItems: ['Paper, card, plastic & tins'], noItems: ['Glass (use blue box)'] },
+          { id: 'edi-blue', name: 'Blue Box', color: 'blue', freqWeeks: 2, offsetWeeks: 0, summary: 'Glass recycling', yesItems: ['Glass bottles & jars'], noItems: ['Broken window glass'] },
+          { id: 'edi-food', name: 'Food Caddy', color: 'teal', freqWeeks: 1, offsetWeeks: 0, summary: 'Food scraps', yesItems: ['Cooked & raw food waste'], noItems: ['Packaging'] }
+        ]
+      },
+      cardiff: {
+        id: 'cardiff', name: 'Cardiff Council', lat: 51.481, lon: -3.179,
+        samplePostcode: 'CF10 1EP', putOutBefore: '06:00',
+        tip: 'Cardiff separates recycling into sacks & caddies weekly, with black general waste every 2 weeks.',
+        addresses: [{ id: 'cf-1', postcode: 'CF10 1EP', collectionDay: 3, cycleOffset: 0 }],
+        bins: [
+          { id: 'cdf-black', name: 'Black Bin', color: 'black', freqWeeks: 2, offsetWeeks: 0, summary: 'General waste', yesItems: ['Non-recyclable rubbish'], noItems: ['Food waste'] },
+          { id: 'cdf-blue', name: 'Blue Caddy', color: 'blue', freqWeeks: 1, offsetWeeks: 0, summary: 'Glass bottles & jars', yesItems: ['Glass jars & bottles'], noItems: ['Ceramics'] },
+          { id: 'cdf-red', name: 'Red Sack', color: 'red', freqWeeks: 1, offsetWeeks: 0, summary: 'Metals & plastics', yesItems: ['Tins, cans & plastic containers'], noItems: ['Cardboard'] },
+          { id: 'cdf-food', name: 'Food Caddy', color: 'teal', freqWeeks: 1, offsetWeeks: 0, summary: 'Food waste', yesItems: ['All food scraps'], noItems: ['Liquids'] }
+        ]
+      },
+      bristol: {
+        id: 'bristol', name: 'Bristol City Council', lat: 51.454, lon: -2.587,
+        samplePostcode: 'BS1 4TR', putOutBefore: '07:00',
+        tip: 'Bristol collects recycling boxes and food caddies weekly, and black bins every two weeks.',
+        addresses: [{ id: 'bs-1', postcode: 'BS1 4TR', collectionDay: 4, cycleOffset: 0 }],
+        bins: [
+          { id: 'brs-black', name: 'Black Bin', color: 'black', freqWeeks: 2, offsetWeeks: 0, summary: 'General rubbish', yesItems: ['Non-recyclables'], noItems: ['Recyclables'] },
+          { id: 'brs-green', name: 'Green Box', color: 'green', freqWeeks: 1, offsetWeeks: 0, summary: 'Glass, tins & plastics', yesItems: ['Glass, plastic bottles & cans'], noItems: ['Cardboard'] },
+          { id: 'brs-blue', name: 'Blue Bag', color: 'blue', freqWeeks: 1, offsetWeeks: 0, summary: 'Cardboard', yesItems: ['Flattened cardboard'], noItems: ['Plastic wrap'] },
+          { id: 'brs-brown', name: 'Food Caddy', color: 'brown', freqWeeks: 1, offsetWeeks: 0, summary: 'Food waste', yesItems: ['Food peelings & leftovers'], noItems: ['Packaging'] }
+        ]
+      },
+      birmingham: {
+        id: 'birmingham', name: 'Birmingham City Council', lat: 52.486, lon: -1.890,
+        samplePostcode: 'B1 1BB', putOutBefore: '06:00',
+        tip: 'Place bins at the edge of your property by 6:00 AM with handles facing the road.',
+        addresses: [{ id: 'bh-1', postcode: 'B1 1BB', collectionDay: 2, cycleOffset: 0 }],
+        bins: [
+          { id: 'bhm-grey', name: 'Grey Bin', color: 'grey', freqWeeks: 1, offsetWeeks: 0, summary: 'Household waste', yesItems: ['General waste'], noItems: ['Garden waste'] },
+          { id: 'bhm-blue', name: 'Blue Lid Bin', color: 'blue', freqWeeks: 2, offsetWeeks: 0, summary: 'Recycling + paper pod', yesItems: ['Plastic, cans, glass & paper'], noItems: ['Nappies'] }
+        ]
+      },
+      liverpool: {
+        id: 'liverpool', name: 'Liverpool City Council', lat: 53.408, lon: -2.991,
+        samplePostcode: 'L1 8JQ', putOutBefore: '06:30',
+        tip: 'Liverpool’s iconic Purple Bin is for general waste, paired with Blue (recycling) and Green (garden).',
+        addresses: [{ id: 'lv-1', postcode: 'L1 8JQ', collectionDay: 5, cycleOffset: 0 }],
+        bins: [
+          { id: 'liv-purple', name: 'Purple Bin', color: 'purple', freqWeeks: 2, offsetWeeks: 0, summary: 'General waste', yesItems: ['Non-recyclable household waste'], noItems: ['Garden waste'] },
+          { id: 'liv-blue', name: 'Blue Bin', color: 'blue', freqWeeks: 2, offsetWeeks: 1, summary: 'Recycling', yesItems: ['Paper, card, glass, cans & plastic bottles'], noItems: ['Plastic bags'] },
+          { id: 'liv-green', name: 'Green Bin', color: 'green', freqWeeks: 2, offsetWeeks: 0, activeMonths: [2, 3, 4, 5, 6, 7, 8, 9, 10], seasonLabel: 'Mar–Nov only', summary: 'Garden waste', yesItems: ['Grass & hedge cuttings'], noItems: ['Food waste'] }
+        ]
+      },
+      westminster: {
+        id: 'westminster', name: 'Westminster City Council', lat: 51.501, lon: -0.141,
+        samplePostcode: 'SW1A 2AA', putOutBefore: '07:00',
+        tip: 'Put clear recycling bags and black refuse bags neatly at the kerbside on your scheduled day.',
+        addresses: [{ id: 'ws-1', postcode: 'SW1A 2AA', collectionDay: 1, cycleOffset: 0 }],
+        bins: [
+          { id: 'wst-black', name: 'Black Bin', color: 'black', freqWeeks: 1, offsetWeeks: 0, summary: 'General rubbish', yesItems: ['Household refuse'], noItems: ['Recyclables'] },
+          { id: 'wst-blue', name: 'Recycling', color: 'blue', freqWeeks: 1, offsetWeeks: 0, summary: 'Mixed dry recycling', yesItems: ['Paper, card, glass, cans & plastics'], noItems: ['Food waste'] }
+        ]
+      }
+    };
+
+    const WEATHER_MODES = [
+      { id: 'auto',   icon: '📡', label: 'Live Weather' },
+      { id: 'season', icon: '🗓️', label: 'Auto Season' },
+      { id: 'sunny',  icon: '☀️', label: 'Sunny' },
+      { id: 'rain',   icon: '🌧️', label: 'Rainy' },
+      { id: 'snow',   icon: '❄️', label: 'Snowy' },
+      { id: 'windy',  icon: '💨', label: 'Windy' },
+      { id: 'autumn', icon: '🍂', label: 'Autumn' },
+      { id: 'spring', icon: '🌸', label: 'Spring' }
+    ];
+
+    const SCENE_THEMES = {
+      sunny: {
+        icon: '☀️', label: 'Sunny & Bright',
+        skyLight: 'linear-gradient(to bottom, #38BDF8 0%, #BAE6FD 55%, #DCFCE7 100%)',
+        skyDark:  'linear-gradient(to bottom, #1E1B4B 0%, #1E293B 55%, #0F172A 100%)',
+        orbEmoji: '☀️', orbDarkEmoji: '🌙', orbClass: 'bg-amber-300 dark:bg-amber-100 shadow-amber-300/60',
+        hedgeColor: '#22C55E', hedgeDark: '#14532D', bush1: '#16A34A', bush2: '#22C55E',
+        snowCap: false, festiveHouse: false, puddle: false, tip: null
+      },
+      cloudy: {
+        icon: '⛅', label: 'Crisp & Cloudy',
+        skyLight: 'linear-gradient(to bottom, #94A3B8 0%, #CBD5E1 52%, #E2E8F0 100%)',
+        skyDark:  'linear-gradient(to bottom, #1E293B 0%, #334155 55%, #0F172A 100%)',
+        orbEmoji: '⛅', orbDarkEmoji: '☁️', orbClass: 'bg-slate-200 dark:bg-slate-600 shadow-slate-300/40',
+        hedgeColor: '#15803D', hedgeDark: '#14532D', bush1: '#15803D', bush2: '#16A34A',
+        snowCap: false, festiveHouse: false, puddle: false, tip: null
+      },
+      rain: {
+        icon: '🌧️', label: 'Rainy UK Day',
+        skyLight: 'linear-gradient(to bottom, #475569 0%, #64748B 50%, #94A3B8 100%)',
+        skyDark:  'linear-gradient(to bottom, #0F172A 0%, #1E293B 55%, #020617 100%)',
+        orbEmoji: '🌧️', orbDarkEmoji: '🌧️', orbClass: 'bg-slate-300/80 dark:bg-slate-700/80 shadow-sky-400/20',
+        hedgeColor: '#166534', hedgeDark: '#052E16', bush1: '#14532D', bush2: '#166534',
+        snowCap: false, festiveHouse: false, puddle: true,
+        tip: '🌧️ Rainy out! Keep your cardboard recycling lid snapped shut so paper stays dry.'
+      },
+      snow: {
+        icon: '❄️', label: 'Frosty & Snowy',
+        skyLight: 'linear-gradient(to bottom, #93C5FD 0%, #DBEAFE 52%, #F8FAFC 100%)',
+        skyDark:  'linear-gradient(to bottom, #172554 0%, #1E3A8A 50%, #1E293B 100%)',
+        orbEmoji: '❄️', orbDarkEmoji: '❄️', orbClass: 'bg-sky-100 dark:bg-sky-900 shadow-white/50',
+        hedgeColor: '#CBD5E1', hedgeDark: '#475569', bush1: '#E2E8F0', bush2: '#CBD5E1',
+        snowCap: true, festiveHouse: false, puddle: false,
+        tip: '❄️ Chilly & frosty! Watch your step wheeling bins out on a slippery drive.'
+      },
+      windy: {
+        icon: '💨', label: 'Blustery Breeze',
+        skyLight: 'linear-gradient(to bottom, #60A5FA 0%, #BFDBFE 52%, #E2E8F0 100%)',
+        skyDark:  'linear-gradient(to bottom, #1E293B 0%, #334155 55%, #0F172A 100%)',
+        orbEmoji: '💨', orbDarkEmoji: '💨', orbClass: 'bg-sky-200 dark:bg-slate-600 shadow-sky-200/40',
+        hedgeColor: '#15803D', hedgeDark: '#14532D', bush1: '#16A34A', bush2: '#22C55E',
+        snowCap: false, festiveHouse: false, puddle: false,
+        tip: '💨 Windy bin night! Park bins snug together so lids don’t blow open.'
+      },
+      autumn: {
+        icon: '🍂', label: 'Cosy Autumn',
+        skyLight: 'linear-gradient(to bottom, #7DD3FC 0%, #FED7AA 58%, #FDE68A 100%)',
+        skyDark:  'linear-gradient(to bottom, #312E81 0%, #431407 58%, #1E293B 100%)',
+        orbEmoji: '🍂', orbDarkEmoji: '🌙', orbClass: 'bg-orange-200 dark:bg-amber-900/70 shadow-orange-300/40',
+        hedgeColor: '#B45309', hedgeDark: '#78350F', bush1: '#C2410C', bush2: '#D97706',
+        snowCap: false, festiveHouse: false, puddle: false,
+        tip: '🍂 Crisp autumn air! Check your Schedule tab for any seasonal garden-bin pauses.'
+      },
+      spring: {
+        icon: '🌸', label: 'Spring Blossom',
+        skyLight: 'linear-gradient(to bottom, #7DD3FC 0%, #E0F2FE 52%, #FCE7F3 100%)',
+        skyDark:  'linear-gradient(to bottom, #1E1B4B 0%, #3B0764 55%, #1E293B 100%)',
+        orbEmoji: '🌸', orbDarkEmoji: '🌙', orbClass: 'bg-pink-200 dark:bg-pink-900/60 shadow-pink-200/50',
+        hedgeColor: '#4ADE80', hedgeDark: '#166534', bush1: '#F472B6', bush2: '#22C55E',
+        snowCap: false, festiveHouse: false, puddle: false,
+        tip: '🌸 Spring is here! Garden waste collections are back in full swing.'
+      },
+      christmas: {
+        icon: '🎄', label: 'Happy Christmas!',
+        skyLight: 'linear-gradient(to bottom, #1E3A8A 0%, #1D4ED8 45%, #7F1D1D 100%)',
+        skyDark:  'linear-gradient(to bottom, #0F172A 0%, #1E1B4B 48%, #450A0A 100%)',
+        orbEmoji: '⭐', orbDarkEmoji: '⭐', orbClass: 'bg-amber-300 shadow-amber-300/80',
+        hedgeColor: '#F1F5F9', hedgeDark: '#64748B', bush1: '#F8FAFC', bush2: '#15803D',
+        snowCap: true, festiveHouse: true, puddle: false,
+        tip: '🎄 Happy Christmas! Check your Schedule tab for any festive Bank Holiday bin shifts.'
+      }
+    };
+
+    let liveWeatherCache = { loaded: false, loading: false, scene: null, tempC: null, windKmh: null, summary: null };
+    let weatherTrayOpen = false;
+
+    const STORAGE_KEY = 'bin_buddy_uk_release_v1';
+    const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const CYCLE_ANCHOR_MONDAY = new Date(2026, 10, 2);
+
+    function createDefaultState() {
+      const barnsley = UK_COUNCILS.barnsley;
+      const defaultAddr = barnsley.addresses[0];
+      return {
+        councilId: 'barnsley',
+        councilName: barnsley.name,
+        lat: barnsley.lat,
+        lon: barnsley.lon,
+        postcode: defaultAddr.postcode,
+        addressId: defaultAddr.id,
+        availableAddresses: JSON.parse(JSON.stringify(barnsley.addresses)),
+        putOutBefore: barnsley.putOutBefore,
+        tip: barnsley.tip,
+        collectionDay: defaultAddr.collectionDay,
+        cycleOffset: defaultAddr.cycleOffset,
+        bins: JSON.parse(JSON.stringify(barnsley.bins)),
+        dataSource: 'local',
+        liveApiUrl: '',
+        liveScheduleEntries: null,
+        lastSyncedAt: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        hasCompletedFirstRun: false,
+        completedDates: {},
+        broughtInDates: {},
+        streak: 0,
+        streakAwardedDates: {},
+        soundEnabled: true,
+        darkMode: false,
+        weatherMode: 'auto',
+        reminders: {
+          eveEnabled: true, eveTime: '18:00',
+          morningEnabled: true, morningTime: '05:30',
+          bringInEveEnabled: true, bringInEveTime: '18:00',
+          bringInMorningEnabled: true, bringInMorningTime: '08:00',
+          smartSkip: true, previewDevice: 'pixel'
+        }
+      };
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return createDefaultState();
+        const parsed = JSON.parse(raw);
+        const defaults = createDefaultState();
+        return {
+          ...defaults,
+          ...parsed,
+          reminders: { ...defaults.reminders, ...(parsed.reminders || {}) },
+          bins: Array.isArray(parsed.bins) && parsed.bins.length > 0 ? parsed.bins : defaults.bins
+        };
+      } catch (err) {
+        return createDefaultState();
+      }
+    }
+
+    function saveState() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (err) {}
+    }
+
+    let state = loadState();
+    let activeTab = 'home';
+    let selectedGuideBinId = null;
+    let scheduleFilterBinId = 'all';
+
+    const SoundFX = {
+      synth: null, chimeSynth: null, lastTickAt: 0,
+      async ensureReady() {
+        if (!state.soundEnabled || typeof Tone === 'undefined') return false;
+        try {
+          if (Tone.context && Tone.context.state !== 'running') await Tone.start();
+          if (!this.synth) {
+            this.synth = new Tone.PolySynth(Tone.Synth, {
+              oscillator: { type: 'triangle' },
+              envelope: { attack: 0.01, decay: 0.14, sustain: 0.08, release: 0.25 }
+            }).toDestination();
+            this.synth.volume.value = -10;
+          }
+          return true;
+        } catch (err) { return false; }
+      },
+      async playPickup() { if (await this.ensureReady()) try { this.synth.triggerAttackRelease('C5', '16n'); } catch (e) {} },
+      async playWheelTick() {
+        const now = Date.now();
+        if (now - this.lastTickAt < 90) return;
+        this.lastTickAt = now;
+        if (await this.ensureReady()) try { this.synth.triggerAttackRelease('G3', '64n'); } catch (e) {}
+      },
+      async playSnapBin() {
+        if (await this.ensureReady()) try {
+          const t = Tone.now();
+          this.synth.triggerAttackRelease('E5', '16n', t);
+          this.synth.triggerAttackRelease('A5', '16n', t + 0.08);
+        } catch (e) {}
+      },
+      async playVictory() {
+        if (await this.ensureReady()) try {
+          const t = Tone.now();
+          ['C5', 'E5', 'G5', 'C6'].forEach((n, idx) => this.synth.triggerAttackRelease(n, '8n', t + idx * 0.09));
+        } catch (e) {}
+      },
+      async playNotification() {
+        if (await this.ensureReady()) try {
+          const t = Tone.now();
+          this.synth.triggerAttackRelease('G5', '16n', t);
+          this.synth.triggerAttackRelease('C6', '8n', t + 0.12);
+        } catch (e) {}
+      },
+      stopChristmasJingle() {
+        try {
+          if (this.chimeSynth) { this.chimeSynth.releaseAll(); this.chimeSynth.dispose(); this.chimeSynth = null; }
+        } catch (e) {}
+      },
+      async playChristmasJingle() {
+        if (!(await this.ensureReady())) return;
+        try {
+          this.stopChristmasJingle();
+          this.chimeSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: 'sine' },
+            envelope: { attack: 0.03, decay: 0.28, sustain: 0.22, release: 1.1 }
+          }).toDestination();
+          this.chimeSynth.volume.value = -8;
+          const t = Tone.now() + 0.04;
+          const silentNight = [
+            [['G4', 'C4'], 0.00, 0.65], ['A4', 0.68, 0.20], ['G4', 0.90, 0.40], ['E4', 1.32, 1.00],
+            [['G4', 'C4'], 2.46, 0.65], ['A4', 3.14, 0.20], ['G4', 3.36, 0.40], ['E4', 3.78, 1.00],
+            [['D5', 'G4'], 4.92, 0.80], ['D5', 5.76, 0.40], ['B4', 6.20, 1.00],
+            [['C5', 'E4'], 7.34, 0.80], ['C5', 8.18, 0.40], [['G4', 'E4', 'C4'], 8.62, 1.35]
+          ];
+          silentNight.forEach(([notes, offset, dur]) => this.chimeSynth.triggerAttackRelease(notes, dur, t + offset));
+        } catch (e) {}
+      }
+    };
+
+    function triggerHaptic(pattern) {
+      try { if (navigator && typeof navigator.vibrate === 'function') navigator.vibrate(pattern); } catch (e) {}
+    }
+
+    const Confetti = {
+      canvas: null, ctx: null, particles: [], running: false,
+      init() {
+        this.canvas = document.getElementById('confettiCanvas');
+        if (!this.canvas) return;
+        this.ctx = this.canvas.getContext('2d');
+        this.resize();
+        window.addEventListener('resize', () => this.resize());
+      },
+      resize() {
+        if (!this.canvas) return;
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+      },
+      spawn(x, y, colors, count = 48) {
+        if (!this.canvas) this.init();
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 2.5 + Math.random() * 6.5;
+          this.particles.push({
+            x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed - 3.5,
+            size: 5 + Math.random() * 6, color: colors[i % colors.length],
+            rot: Math.random() * 360, vrot: (Math.random() - 0.5) * 12, life: 1
+          });
+        }
+        if (!this.running) { this.running = true; this.loop(); }
+      },
+      burst(x, y) { this.spawn(x, y, ['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#8B5CF6', '#22C55E'], 50); },
+      burstFestive(x, y) { this.spawn(x, y, ['#DC2626', '#16A34A', '#FACC15', '#FFFFFF', '#F59E0B', '#EF4444'], 65); },
+      loop() {
+        if (!this.ctx || !this.canvas) { this.running = false; return; }
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.particles.forEach(p => {
+          p.x += p.vx; p.y += p.vy; p.vy += 0.22; p.vx *= 0.99; p.rot += p.vrot; p.life -= 0.015;
+          if (p.life > 0) {
+            this.ctx.save();
+            this.ctx.globalAlpha = Math.max(0, p.life);
+            this.ctx.translate(p.x, p.y);
+            this.ctx.rotate((p.rot * Math.PI) / 180);
+            this.ctx.fillStyle = p.color;
+            this.ctx.fillRect(-p.size / 2, -p.size / 3, p.size, p.size * 0.65);
+            this.ctx.restore();
+          }
+        });
+        this.particles = this.particles.filter(p => p.life > 0 && p.y < this.canvas.height + 20);
+        if (this.particles.length > 0) requestAnimationFrame(() => this.loop());
+        else { this.running = false; this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); }
+      }
+    };
+
+    let toastTimer = null;
+    function showToast(msg) {
+      const box = document.getElementById('toastContainer');
+      if (!box) return;
+      box.innerHTML = `<div class="pointer-events-auto max-w-sm rounded-2xl bg-slate-900/95 dark:bg-white/95 text-white dark:text-slate-900 px-4 py-2.5 text-xs font-bold shadow-xl backdrop-blur-md">${msg}</div>`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { if (box) box.innerHTML = ''; }, 3200);
+    }
+
+    function getCurrentDate() { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), now.getDate()); }
+    function formatDateKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+    function getFriendlyDateHeading(d) { return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' }); }
+    function getShortDateLabel(d) { return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }); }
+    function getDayAfterDate(d) { const next = new Date(d.getFullYear(), d.getMonth(), d.getDate()); next.setDate(next.getDate() + 1); return next; }
+
+    function getCountdownInfo(targetDate) {
+      const today = getCurrentDate();
+      const diffDays = Math.round((targetDate - today) / 86400000);
+      if (diffDays <= 0) return { label: `🚨 Bin Day Today! • Before ${state.putOutBefore}`, classes: 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200' };
+      if (diffDays === 1) return { label: `⏰ Tomorrow! • Put out before ${state.putOutBefore}`, classes: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200' };
+      return { label: `📅 In ${diffDays} days • Before ${state.putOutBefore}`, classes: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200' };
+    }
+
+    function parseUKDate(str) {
+      if (!str || typeof str !== 'string') return null;
+      const clean = str.trim();
+      const ukMatch = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (ukMatch) return new Date(Number(ukMatch[3]), Number(ukMatch[2]) - 1, Number(ukMatch[1]));
+      const isoMatch = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (isoMatch) return new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+      const fallback = new Date(clean);
+      if (!isNaN(fallback.getTime())) return new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate());
+      return null;
+    }
+
+    function inferBinColor(typeStr = '') {
+      const s = String(typeStr).toLowerCase();
+      if (s.includes('blue') || s.includes('paper') || s.includes('card')) return 'blue';
+      if (s.includes('brown') || s.includes('glass') || s.includes('cans') || s.includes('plastic')) return 'brown';
+      if (s.includes('green') || s.includes('garden')) return 'green';
+      if (s.includes('purple')) return 'purple';
+      if (s.includes('red')) return 'red';
+      if (s.includes('food') || s.includes('caddy') || s.includes('teal')) return 'teal';
+      if (s.includes('orange')) return 'orange';
+      if (s.includes('yellow')) return 'yellow';
+      if (s.includes('black')) return 'black';
+      return 'grey';
+    }
+
+    function generateUpcomingSchedule(weeksCount = 12) {
+      const today = getCurrentDate();
+      if (state.dataSource === 'live' && Array.isArray(state.liveScheduleEntries) && state.liveScheduleEntries.length > 0) {
+        const grouped = new Map();
+        state.liveScheduleEntries.forEach((entry) => {
+          const d = parseUKDate(entry.collectionDate || entry.date);
+          if (!d || d < today) return;
+          const key = formatDateKey(d);
+          if (!grouped.has(key)) grouped.set(key, { date: d, dateKey: key, bins: [], hasWinterPause: false });
+          const rawName = (entry.type || entry.binType || 'Bin').trim();
+          const color = inferBinColor(rawName);
+          const id = `live-${color}-${rawName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+          const group = grouped.get(key);
+          if (!group.bins.some(b => b.id === id)) {
+            group.bins.push({ id, name: rawName, color, summary: 'Official council collection', yesItems: ['Check your council guide for accepted materials'], noItems: ['Batteries, vapes or hot ashes'] });
+          }
+        });
+        const sorted = Array.from(grouped.values()).sort((a, b) => a.date - b.date).slice(0, weeksCount).map((item, idx) => ({ ...item, weekIndex: idx }));
+        if (sorted.length > 0) return sorted;
+      }
+
+      const results = [];
+      const firstDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const daysUntil = (state.collectionDay - firstDate.getDay() + 7) % 7;
+      firstDate.setDate(firstDate.getDate() + daysUntil);
+
+      for (let w = 0; w < weeksCount; w++) {
+        const d = new Date(firstDate.getFullYear(), firstDate.getMonth(), firstDate.getDate() + w * 7);
+        const mondayOfD = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
+        const weekDiff = Math.round((mondayOfD - CYCLE_ANCHOR_MONDAY) / (7 * 86400000));
+        const cyclePos = (((weekDiff + (state.cycleOffset || 0)) % 120) + 120) % 120;
+        let hasWinterPause = false;
+        const dueBins = state.bins.filter(bin => {
+          const freq = Math.max(1, bin.freqWeeks || 2);
+          const offset = bin.offsetWeeks || 0;
+          if ((cyclePos % freq) !== (offset % freq)) return false;
+          if (Array.isArray(bin.activeMonths) && !bin.activeMonths.includes(d.getMonth())) { hasWinterPause = true; return false; }
+          return true;
+        });
+        if (dueBins.length > 0) results.push({ weekIndex: results.length, date: d, dateKey: formatDateKey(d), bins: dueBins, hasWinterPause });
+      }
+      return results;
+    }
+
+    function getActiveCollection() { return generateUpcomingSchedule(12)[0] || null; }
+
+    function renderBinSVG(colorKey, opts = {}) {
+      const pal = BIN_PALETTES[colorKey] || BIN_PALETTES.grey;
+      const size = opts.size || 68;
+      const isOnKerb = Boolean(opts.isOnKerb);
+      const isDragging = Boolean(opts.isDragging);
+      const wheelAngle = opts.wheelAngle || 0;
+      const animate = opts.animate !== false;
+      const isFestive = Boolean(opts.isFestive);
+
+      const faceMarkup = isOnKerb
+        ? `<rect x="27" y="54" width="18" height="10" rx="3" fill="#0F172A"/><rect x="49" y="54" width="18" height="10" rx="3" fill="#0F172A"/><line x1="45" y1="58" x2="49" y2="58" stroke="#0F172A" stroke-width="2.5"/><line x1="30" y1="57" x2="35" y2="57" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/><line x1="52" y1="57" x2="57" y2="57" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/><path d="M38 71 Q47 79 56 71" stroke="#0F172A" stroke-width="3" stroke-linecap="round" fill="none"/>`
+        : isDragging
+        ? `<circle cx="37" cy="59" r="4.2" fill="#0F172A"/><circle cx="38.4" cy="57.6" r="1.4" fill="#FFFFFF"/><circle cx="57" cy="59" r="4.2" fill="#0F172A"/><circle cx="58.4" cy="57.6" r="1.4" fill="#FFFFFF"/><ellipse cx="47" cy="70" rx="5.5" ry="4.5" fill="#0F172A"/>`
+        : `<g class="${animate ? 'bin-eyes' : ''}"><circle cx="37" cy="60" r="3.8" fill="#0F172A"/><circle cx="38.2" cy="58.8" r="1.3" fill="#FFFFFF"/><circle cx="57" cy="60" r="3.8" fill="#0F172A"/><circle cx="58.2" cy="58.8" r="1.3" fill="#FFFFFF"/></g><path d="M40 70 Q47 76 54 70" stroke="#0F172A" stroke-width="2.8" stroke-linecap="round" fill="none"/><circle cx="31" cy="66" r="2.6" fill="#FDA4AF" opacity="0.55"/><circle cx="63" cy="66" r="2.6" fill="#FDA4AF" opacity="0.55"/>`;
+
+      const santaHatMarkup = isFestive
+        ? `<g transform="translate(0, -3)"><path d="M26 24 Q45 -4 72 15 Q63 20 62 24 Z" fill="#DC2626" stroke="#0F172A" stroke-width="2.5" stroke-linejoin="round"/><rect x="23" y="20" width="44" height="8" rx="4" fill="#F8FAFC" stroke="#0F172A" stroke-width="2.2"/><circle cx="74" cy="17" r="5" fill="#F8FAFC" stroke="#0F172A" stroke-width="2.2"/></g>`
+        : '';
+
+      return `
+        <svg width="${size}" height="${Math.round(size * 1.16)}" viewBox="0 0 96 112" fill="none" xmlns="http://www.w3.org/2000/svg" class="${animate && !isDragging ? 'animate-bin-idle' : ''} drop-shadow-md overflow-visible">
+          <ellipse cx="47" cy="105" rx="26" ry="4.5" fill="rgba(15,23,42,0.22)"/>
+          <path d="M16 36 H24 V44 H18 C15 44 14 41 16 36 Z" fill="#1E293B"/>
+          <path d="M22 36 H74 L69 94 C68.5 98 65 101 61 101 H35 C31 101 27.5 98 27 94 L22 36 Z" fill="${pal.body}" stroke="#0F172A" stroke-width="3.2" stroke-linejoin="round"/>
+          <path d="M29 44 L32 92" stroke="${pal.light}" stroke-width="3.5" stroke-linecap="round" opacity="0.45"/>
+          <g class="${animate && !isOnKerb && !isDragging ? 'bin-lid' : ''}">
+            <path d="M18 35 C18 27 24 23 32 23 H64 C72 23 78 27 78 35 V38 H18 V35 Z" fill="${pal.lid}" stroke="#0F172A" stroke-width="3.2" stroke-linejoin="round"/>
+            <rect x="38" y="16" width="20" height="7" rx="3.5" fill="${pal.body}" stroke="#0F172A" stroke-width="2.8"/>
+            ${santaHatMarkup}
+          </g>
+          ${faceMarkup}
+          <g class="bin-wheel" style="transform-origin: 70px 96px; transform: rotate(${wheelAngle}deg);">
+            <circle cx="70" cy="96" r="10.5" fill="#1E293B" stroke="#0F172A" stroke-width="3"/>
+            <circle cx="70" cy="96" r="4" fill="#CBD5E1"/>
+            <line x1="70" y1="88" x2="70" y2="104" stroke="#64748B" stroke-width="1.6"/>
+            <line x1="62" y1="96" x2="78" y2="96" stroke="#64748B" stroke-width="1.6"/>
+          </g>
+        </svg>
+      `;
+    }
+
+    function renderPigeonSVG(scene) {
+      let gearMarkup = '';
+      if (scene === 'rain') {
+        gearMarkup = `<g><path d="M32 45 L32 16" stroke="#1E293B" stroke-width="2.2" stroke-linecap="round"/><path d="M32 45 Q32 48 35 48" stroke="#1E293B" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M10 19 C13 6 51 6 54 19 Q47 15 42 19 Q37 15 32 19 Q27 15 22 19 Q17 15 10 19 Z" fill="#EF4444" stroke="#1E293B" stroke-width="2" stroke-linejoin="round"/></g>`;
+      } else if (scene === 'christmas') {
+        gearMarkup = `<g><path d="M29 28 Q37 14 48 22 Q43 24 43 28 Z" fill="#DC2626" stroke="#1E293B" stroke-width="1.8" stroke-linejoin="round"/><rect x="28" y="25.5" width="17" height="4" rx="2" fill="#F8FAFC" stroke="#1E293B" stroke-width="1.5"/><circle cx="49" cy="23" r="2.8" fill="#F8FAFC" stroke="#1E293B" stroke-width="1.5"/></g>`;
+      } else if (scene === 'snow' || scene === 'autumn') {
+        const scarfColor = scene === 'snow' ? '#DC2626' : '#D97706';
+        gearMarkup = `<g><rect x="29" y="39" width="15" height="4.6" rx="2.3" fill="${scarfColor}" stroke="#1E293B" stroke-width="1.5"/><path d="M39 43 L43 51 L38 52 L35 43 Z" fill="${scarfColor}" stroke="#1E293B" stroke-width="1.5" stroke-linejoin="round"/></g>`;
+      } else if (scene === 'sunny') {
+        gearMarkup = `<g><line x1="30" y1="32.2" x2="36" y2="32.2" stroke="#0F172A" stroke-width="1.8"/><rect x="35.5" y="29.8" width="8.5" height="4.8" rx="1.6" fill="#0F172A"/></g>`;
+      }
+      return `
+        <svg width="46" height="49" viewBox="0 0 64 68" fill="none" xmlns="http://www.w3.org/2000/svg" class="drop-shadow-sm overflow-visible">
+          <ellipse cx="30" cy="63" rx="11" ry="2.5" fill="rgba(15,23,42,0.18)"/>
+          <path d="M26 57 L26 62.5 M23.5 62.5 L28.5 62.5 M34 57 L34 62.5 M31.5 62.5 L36.5 62.5" stroke="#EA580C" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M16 49 L7 54 L13 43 Z" fill="#475569" stroke="#1E293B" stroke-width="1.8" stroke-linejoin="round"/>
+          <ellipse cx="30" cy="47" rx="14" ry="11" fill="#94A3B8" stroke="#1E293B" stroke-width="2"/>
+          <path d="M31 36 Q38 38 40 44 Q33 44 29 41 Z" fill="#10B981" opacity="0.65"/>
+          <path d="M21 44 Q30 41 35 49 Q26 54 19 50 Z" fill="#64748B" stroke="#1E293B" stroke-width="1.8"/>
+          <circle cx="37" cy="34" r="8.5" fill="#94A3B8" stroke="#1E293B" stroke-width="2"/>
+          <path d="M44.5 32.5 L51 34.5 L44.5 36.5 Z" fill="#F59E0B" stroke="#1E293B" stroke-width="1.6" stroke-linejoin="round"/>
+          <circle cx="39.5" cy="32.5" r="2.1" fill="#0F172A"/>
+          <circle cx="40.2" cy="31.8" r="0.8" fill="#FFFFFF"/>
+          ${gearMarkup}
+        </svg>
+      `;
+    }
+
+    function isRealChristmasDay(dateObj = getCurrentDate()) { return dateObj.getMonth() === 11 && dateObj.getDate() === 25; }
+    function isFestiveModeActive() { return isRealChristmasDay(); }
+
+    function showChristmasEasterEgg(playAudio = false) {
+      const overlay = document.getElementById('christmasOverlay');
+      const avatar = document.getElementById('christmasBinAvatar');
+      if (!overlay) return;
+      if (avatar) {
+        const activeCol = getActiveCollection();
+        const firstBinColor = (activeCol && activeCol.bins[0] && activeCol.bins[0].color) ? activeCol.bins[0].color : 'blue';
+        avatar.innerHTML = renderBinSVG(firstBinColor, { size: 44, isOnKerb: false, animate: true, isFestive: true });
+      }
+      overlay.style.display = 'flex';
+      overlay.classList.remove('hidden');
+      try {
+        Confetti.burstFestive(window.innerWidth / 2, window.innerHeight * 0.32);
+        triggerHaptic([35, 40, 35, 40, 80]);
+        if (playAudio) SoundFX.playChristmasJingle();
+      } catch (e) {}
+    }
+
+    function closeChristmasEasterEgg() {
+      const overlay = document.getElementById('christmasOverlay');
+      if (!overlay) return;
+      SoundFX.stopChristmasJingle();
+      overlay.style.display = 'none';
+      overlay.classList.add('hidden');
+    }
+
+    function getSeasonalScene(dateObj = getCurrentDate()) {
+      if (isRealChristmasDay(dateObj)) return 'christmas';
+      const m = dateObj.getMonth();
+      if (m === 11 || m === 0 || m === 1) return 'snow';
+      if (m >= 2 && m <= 4) return 'spring';
+      if (m >= 5 && m <= 7) return 'sunny';
+      return 'autumn';
+    }
+
+    function mapWmoCodeToScene(code, tempC, windKmh) {
+      if ((code >= 71 && code <= 77) || code === 85 || code === 86) return { scene: 'snow', summary: 'Snowy' };
+      if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99)) return { scene: 'rain', summary: 'Rainy' };
+      if (typeof windKmh === 'number' && windKmh >= 26) return { scene: 'windy', summary: 'Windy' };
+      if (typeof tempC === 'number' && tempC <= 2) return { scene: 'snow', summary: 'Frosty' };
+      if (code === 0 || code === 1) {
+        const m = getCurrentDate().getMonth();
+        if (m >= 8 && m <= 10 && tempC <= 13) return { scene: 'autumn', summary: 'Crisp & Clear' };
+        if (m >= 2 && m <= 4) return { scene: 'spring', summary: 'Bright Spring' };
+        return { scene: 'sunny', summary: 'Clear & Sunny' };
+      }
+      return { scene: 'cloudy', summary: code >= 45 && code <= 48 ? 'Misty' : 'Cloudy' };
+    }
+
+    async function fetchLiveWeather() {
+      const lat = Number(state.lat) || 53.497;
+      const lon = Number(state.lon) || -1.441;
+      liveWeatherCache.loading = true;
+      renderWeatherScene();
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&current=temperature_2m,weather_code,wind_speed_10m&timezone=Europe%2FLondon`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const cur = data && data.current;
+        if (!cur) throw new Error('Missing current weather');
+        const tempC = Math.round(Number(cur.temperature_2m));
+        const windKmh = Math.round(Number(cur.wind_speed_10m));
+        const mapped = mapWmoCodeToScene(Number(cur.weather_code), tempC, windKmh);
+        liveWeatherCache = { loaded: true, loading: false, scene: mapped.scene, tempC, windKmh, summary: mapped.summary };
+      } catch (err) {
+        liveWeatherCache = { loaded: false, loading: false, scene: null, tempC: null, windKmh: null, summary: null };
+      }
+      renderWeatherScene();
+      renderHeroAndGuide();
+    }
+
+    function getActiveAtmosphere() {
+      const mode = state.weatherMode || 'auto';
+      if (isFestiveModeActive()) {
+        return { scene: 'christmas', theme: SCENE_THEMES.christmas, badgeText: 'Happy Christmas! 🎄', sourceNote: 'Special 25 December Christmas Day scene' };
+      }
+      if (mode === 'auto') {
+        if (liveWeatherCache.loaded && liveWeatherCache.scene) {
+          const theme = SCENE_THEMES[liveWeatherCache.scene] || SCENE_THEMES.cloudy;
+          return { scene: liveWeatherCache.scene, theme, badgeText: `${liveWeatherCache.tempC}°C • ${liveWeatherCache.summary}`, sourceNote: `Live weather near ${state.postcode} (${liveWeatherCache.windKmh} km/h wind)` };
+        }
+        const seasonal = getSeasonalScene();
+        const theme = SCENE_THEMES[seasonal];
+        return { scene: seasonal, theme, badgeText: liveWeatherCache.loading ? 'Checking sky…' : theme.label, sourceNote: liveWeatherCache.loading ? `Fetching live weather for ${state.postcode}…` : `Seasonal mode (${getCurrentDate().toLocaleDateString('en-GB', { month: 'long' })})` };
+      }
+      if (mode === 'season') {
+        const seasonal = getSeasonalScene();
+        const theme = SCENE_THEMES[seasonal];
+        return { scene: seasonal, theme, badgeText: `Season • ${theme.label}`, sourceNote: `Matched automatically to ${getCurrentDate().toLocaleDateString('en-GB', { month: 'long' })}` };
+      }
+      const theme = SCENE_THEMES[mode] || SCENE_THEMES.sunny;
+      return { scene: mode, theme, badgeText: theme.label, sourceNote: 'Custom scene atmosphere' };
+    }
+
+    function buildWeatherParticlesHTML(scene) {
+      if (scene === 'christmas') {
+        let html = `<div class="santa-sleigh" aria-hidden="true">🦌🦌🛷🎅</div>`;
+        for (let i = 0; i < 18; i++) html += `<span class="weather-flake" style="left:${(i * 19 + 3) % 98}%; width:${4 + (i % 4) * 2}px; height:${4 + (i % 4) * 2}px; --dur:${(3.8 + (i % 5) * 0.7).toFixed(2)}s; --delay:-${((i * 0.6) % 4.8).toFixed(2)}s;"></span>`;
+        return html;
+      }
+      if (scene === 'rain') {
+        let html = '';
+        for (let i = 0; i < 24; i++) html += `<span class="weather-drop" style="left:${((i * 19) % 104) - 2}%; --dur:${(0.65 + (i % 5) * 0.11).toFixed(2)}s; --delay:-${((i * 0.23) % 1.4).toFixed(2)}s;"></span>`;
+        return html;
+      }
+      if (scene === 'snow') {
+        let html = '';
+        for (let i = 0; i < 20; i++) html += `<span class="weather-flake" style="left:${(i * 17 + 4) % 98}%; width:${4 + (i % 4) * 2}px; height:${4 + (i % 4) * 2}px; --dur:${(3.8 + (i % 5) * 0.7).toFixed(2)}s; --delay:-${((i * 0.65) % 5).toFixed(2)}s;"></span>`;
+        return html;
+      }
+      if (scene === 'autumn') {
+        const icons = ['🍂', '🍁', '🍃'];
+        let html = '';
+        for (let i = 0; i < 10; i++) html += `<span class="weather-leaf" style="left:${(i * 23 + 5) % 92}%; --size:${12 + (i % 3) * 3}px; --dur:${(4.6 + (i % 4) * 0.85).toFixed(2)}s; --delay:-${((i * 0.9) % 5.5).toFixed(2)}s;">${icons[i % icons.length]}</span>`;
+        return html;
+      }
+      if (scene === 'spring') {
+        const icons = ['🌸', '🌼', '🩷'];
+        let html = '';
+        for (let i = 0; i < 10; i++) html += `<span class="weather-leaf" style="left:${(i * 21 + 6) % 92}%; --size:${11 + (i % 3) * 3}px; --dur:${(4.8 + (i % 4) * 0.8).toFixed(2)}s; --delay:-${((i * 0.85) % 5).toFixed(2)}s;">${icons[i % icons.length]}</span>`;
+        return html;
+      }
+      if (scene === 'windy') {
+        let html = '';
+        for (let i = 0; i < 6; i++) html += `<span class="weather-gust" style="top:${16 + i * 24}px; width:${46 + (i % 3) * 24}px; --dur:${(1.5 + (i % 3) * 0.45).toFixed(2)}s; --delay:-${((i * 0.55) % 2.2).toFixed(2)}s;"></span>`;
+        return html;
+      }
+      if (scene === 'sunny') return `<div class="weather-sun-halo"></div>`;
+      if (scene === 'cloudy') return `<div class="weather-mist" style="top: 44px;"></div><div class="weather-mist" style="top: 86px; animation-delay: -4s;"></div>`;
+      return '';
+    }
+
+    function renderWeatherScene() {
+      const arena = document.getElementById('streetArena');
+      if (!arena) return;
+      const atmo = getActiveAtmosphere();
+      const { scene, theme } = atmo;
+      const isDark = Boolean(state.darkMode);
+      const festive = scene === 'christmas';
+
+      arena.style.background = isDark ? theme.skyDark : theme.skyLight;
+      arena.classList.toggle('weather-windy', scene === 'windy');
+
+      const skyOrb = document.getElementById('skyOrb');
+      const skyOrbEmoji = document.getElementById('skyOrbEmoji');
+      if (skyOrb && skyOrbEmoji) {
+        skyOrb.className = `absolute top-3 right-4 w-9 h-9 rounded-full shadow-lg pointer-events-none flex items-center justify-center text-sm transition-all duration-500 ${theme.orbClass}`;
+        skyOrbEmoji.textContent = isDark ? theme.orbDarkEmoji : theme.orbEmoji;
+      }
+
+      document.getElementById('houseSnowCap').classList.toggle('hidden', !theme.snowCap);
+      document.getElementById('houseFestiveDecor').classList.toggle('hidden', !theme.festiveHouse);
+      document.getElementById('streetNativityScene').classList.toggle('hidden', !festive);
+      document.getElementById('rainPuddle').classList.toggle('hidden', !theme.puddle);
+      document.getElementById('gardenHedge').style.backgroundColor = isDark ? theme.hedgeDark : theme.hedgeColor;
+      document.getElementById('houseBush1').setAttribute('fill', theme.bush1);
+      document.getElementById('houseBush2').setAttribute('fill', theme.bush2);
+      document.getElementById('pigeonBuddy').innerHTML = renderPigeonSVG(scene);
+
+      const particlesEl = document.getElementById('weatherParticles');
+      if (particlesEl && particlesEl.dataset.renderedScene !== scene) {
+        particlesEl.innerHTML = buildWeatherParticlesHTML(scene);
+        particlesEl.dataset.renderedScene = scene;
+      }
+
+      document.getElementById('weatherBadgeIcon').textContent = theme.icon;
+      document.getElementById('weatherBadgeText').textContent = atmo.badgeText;
+      document.getElementById('weatherSourceNote').textContent = atmo.sourceNote;
+      document.getElementById('headerBrandEmoji').textContent = festive ? '🎅' : '🗑️';
+      document.getElementById('christmasRibbon').classList.toggle('hidden', !festive);
+
+      const tray = document.getElementById('weatherPickerTray');
+      const chipsWrap = document.getElementById('weatherModeChips');
+      if (tray) tray.classList.toggle('hidden', !weatherTrayOpen);
+
+      if (chipsWrap) {
+        chipsWrap.innerHTML = WEATHER_MODES.map(m => {
+          const isActive = (state.weatherMode || 'auto') === m.id;
+          return `<button type="button" data-weather-mode="${m.id}" class="weather-mode-chip px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition active:scale-95 flex items-center gap-1 cursor-pointer ${isActive ? 'bg-slate-900 text-white dark:bg-emerald-500 dark:text-slate-950 shadow-sm' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700'}"><span>${m.icon}</span><span>${m.label}</span></button>`;
+        }).join('');
+        chipsWrap.querySelectorAll('.weather-mode-chip').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const chosen = btn.dataset.weatherMode;
+            state.weatherMode = chosen;
+            saveState();
+            renderWeatherScene();
+            renderHeroAndGuide();
+            renderMiniGame();
+            if (chosen === 'auto') { fetchLiveWeather(); showToast('📡 Synced to live UK weather!'); }
+            else {
+              const found = WEATHER_MODES.find(x => x.id === chosen);
+              showToast(`${found ? found.icon : '✨'} Scene set to ${found ? found.label : chosen}!`);
+            }
+          });
+        });
+      }
+    }
+
+    let notifTimeout = null;
+    function triggerRichNotification(type = 'eve') {
+      const collection = getActiveCollection();
+      if (!collection) return;
+      const binNames = collection.bins.map(b => b.name).join(' & ');
+      const firstColor = (collection.bins[0] && collection.bins[0].color) ? collection.bins[0].color : 'blue';
+      const completed = state.completedDates[collection.dateKey] || [];
+      const broughtIn = state.broughtInDates[collection.dateKey] || [];
+      const allOut = collection.bins.length > 0 && collection.bins.every(b => completed.includes(b.id));
+      const allBackIn = collection.bins.length > 0 && collection.bins.every(b => broughtIn.includes(b.id));
+
+      if (type === 'morning' && state.reminders.smartSkip && allOut) {
+        showToast('✨ Smart Auto-Skip active! Morning-of alert skipped because your bins are already out.');
+        return;
+      }
+      if (type === 'bringInMorning' && state.reminders.smartSkip && allBackIn) {
+        showToast('✨ Smart Auto-Skip active! Morning-after alert skipped because your bins are already back home.');
+        return;
+      }
+
+      let title = '', body = '';
+      if (type === 'eve') {
+        title = `Bin Night! ${binNames} tomorrow`;
+        body = `${state.councilName} collects ${getShortDateLabel(collection.date)} before ${state.putOutBefore}. Swipe your bins to the kerb!`;
+      } else if (type === 'morning') {
+        title = `Rise & shine! Put ${binNames} out now`;
+        body = `Lorry due shortly (${state.postcode}). Handles facing the road!`;
+      } else if (type === 'bringInEve') {
+        title = `🏡 Bin day done! Bring ${binNames} back in`;
+        body = `Emptied today in ${state.postcode}? Drag your bins back off the kerbside onto your drive!`;
+      } else {
+        title = `🌤️ Quick nudge: Bring ${binNames} in`;
+        body = `Don't leave ${binNames} out on the pavement — wheel them back home to mark done!`;
+      }
+
+      const device = state.reminders.previewDevice || 'pixel';
+      const isIOS = device === 'iphone17' || device === 'iphone12mini';
+      const deviceLabel = device === 'pixel' ? 'Android • now' : device === 'iphone17' ? 'iPhone • now' : 'Compact • now';
+      const container = document.getElementById('liveNotificationContainer');
+
+      if (container) {
+        container.innerHTML = `
+          <div class="pointer-events-auto w-full ${device === 'iphone12mini' ? 'max-w-[330px]' : 'max-w-sm'} ${isIOS ? 'rounded-[26px] bg-white/95 dark:bg-slate-800/95' : 'rounded-3xl bg-slate-900/95 text-white'} border border-slate-200/70 dark:border-slate-700 shadow-2xl backdrop-blur-xl p-3 flex items-center gap-3 animate-notif-drop">
+            <div class="w-12 h-12 rounded-2xl ${type.startsWith('bringIn') ? 'bg-indigo-100/80 dark:bg-indigo-950/80' : 'bg-emerald-100/80 dark:bg-emerald-950/80'} flex items-center justify-center shrink-0 overflow-hidden">
+              ${renderBinSVG(firstColor, { size: 38, isOnKerb: type.startsWith('bringIn'), animate: false, isFestive: isFestiveModeActive() })}
+            </div>
+            <div class="min-w-0 flex-1 ${isIOS ? 'text-slate-900 dark:text-white' : 'text-white'}">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider opacity-70">Bin Buddy</span>
+                <span class="text-[10px] opacity-60">${deviceLabel}</span>
+              </div>
+              <p class="font-bold text-xs sm:text-sm leading-tight mt-0.5 truncate">${title}</p>
+              <p class="text-[11px] opacity-80 leading-snug mt-0.5 line-clamp-2">${body}</p>
+            </div>
+            <button id="dismissNotifBtn" type="button" class="shrink-0 w-7 h-7 rounded-full bg-black/10 dark:bg-white/10 flex items-center justify-center text-xs font-bold hover:opacity-80">✕</button>
+          </div>
+        `;
+        const dismissBtn = document.getElementById('dismissNotifBtn');
+        if (dismissBtn) dismissBtn.addEventListener('click', () => { container.innerHTML = ''; clearTimeout(notifTimeout); });
+      }
+      SoundFX.playNotification();
+      triggerHaptic([30, 40, 30]);
+      clearTimeout(notifTimeout);
+      notifTimeout = setTimeout(() => { if (container) container.innerHTML = ''; }, 5500);
+      try { if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body }); } catch (e) {}
+    }
+
+    function exportScheduleToICS() {
+      const schedule = generateUpcomingSchedule(12);
+      if (!schedule.length) { showToast('No upcoming bin dates available to export.'); return; }
+      const parseTime = (str, defH, defM) => {
+        const parts = String(str || '').split(':');
+        return [parseInt(parts[0], 10) || defH, parseInt(parts[1], 10) || defM];
+      };
+      const [eH, eM] = parseTime(state.reminders.eveTime, 18, 0);
+      const [mH, mM] = parseTime(state.reminders.morningTime, 5, 30);
+      const [biEveH, biEveM] = parseTime(state.reminders.bringInEveTime, 18, 0);
+      const [biMornH, biMornM] = parseTime(state.reminders.bringInMorningTime, 8, 0);
+      const pad2 = n => String(n).padStart(2, '0');
+      const formatIcsLocal = (d, h, m) => `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}T${pad2(h)}${pad2(m)}00`;
+
+      const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Bin Buddy UK//Schedule//EN', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:Bin Buddy UK'];
+      const cleanPc = state.postcode.replace(/\s+/g, '');
+
+      schedule.forEach(item => {
+        const binNames = item.bins.map(b => b.name).join(' & ');
+        if (state.reminders.eveEnabled) {
+          const eveDate = new Date(item.date.getFullYear(), item.date.getMonth(), item.date.getDate() - 1);
+          lines.push('BEGIN:VEVENT', `UID:binbuddy-out-eve-${item.dateKey}-${cleanPc}@binbuddy.uk`, `DTSTART:${formatIcsLocal(eveDate, eH, eM)}`, `DTEND:${formatIcsLocal(eveDate, eH, Math.min(59, eM + 20))}`, `SUMMARY:🌆 Bin Night: Put ${binNames} Out`, `DESCRIPTION:${state.councilName} (${state.postcode}) — Collection tomorrow before ${state.putOutBefore}.`, 'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', `DESCRIPTION:Bin Night! Put ${binNames} out for tomorrow.`, 'END:VALARM', 'END:VEVENT');
+        }
+        if (state.reminders.morningEnabled) {
+          lines.push('BEGIN:VEVENT', `UID:binbuddy-out-am-${item.dateKey}-${cleanPc}@binbuddy.uk`, `DTSTART:${formatIcsLocal(item.date, mH, mM)}`, `DTEND:${formatIcsLocal(item.date, mH, Math.min(59, mM + 20))}`, `SUMMARY:🗑️ Bin Day: ${binNames} Out Before ${state.putOutBefore}`, `DESCRIPTION:${state.councilName} (${state.postcode}) — Put ${binNames} out before ${state.putOutBefore}.`, 'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', `DESCRIPTION:Morning nudge! Put ${binNames} out now.`, 'END:VALARM', 'END:VEVENT');
+        }
+        if (state.reminders.bringInEveEnabled) {
+          lines.push('BEGIN:VEVENT', `UID:binbuddy-in-eve-${item.dateKey}-${cleanPc}@binbuddy.uk`, `DTSTART:${formatIcsLocal(item.date, biEveH, biEveM)}`, `DTEND:${formatIcsLocal(item.date, biEveH, Math.min(59, biEveM + 20))}`, `SUMMARY:🏡 Bring Bins Back In: ${binNames}`, `DESCRIPTION:Bins emptied today in ${state.postcode}? Time to wheel ${binNames} back onto your drive.`, 'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', `DESCRIPTION:Time to bring ${binNames} back in!`, 'END:VALARM', 'END:VEVENT');
+        }
+        if (state.reminders.bringInMorningEnabled) {
+          const nextDay = getDayAfterDate(item.date);
+          lines.push('BEGIN:VEVENT', `UID:binbuddy-in-am-${item.dateKey}-${cleanPc}@binbuddy.uk`, `DTSTART:${formatIcsLocal(nextDay, biMornH, biMornM)}`, `DTEND:${formatIcsLocal(nextDay, biMornH, Math.min(59, biMornM + 20))}`, `SUMMARY:🌤️ Bring Bins In: ${binNames}`, `DESCRIPTION:Friendly nudge to wheel ${binNames} back off the pavement!`, 'BEGIN:VALARM', 'TRIGGER:PT0M', 'ACTION:DISPLAY', `DESCRIPTION:Don't leave ${binNames} on the kerb — wheel them back in!`, 'END:VALARM', 'END:VEVENT');
+        }
+      });
+      lines.push('END:VCALENDAR');
+
+      try {
+        const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `bin-buddy-${cleanPc.toLowerCase()}.ics`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        showToast('📆 Downloaded 12-week calendar with Put Out & Bring In alarms!');
+      } catch (err) {
+        showToast('Could not generate calendar file in this browser.');
+      }
+    }
+
+    function renderHeaderAndTheme() {
+      document.documentElement.classList.toggle('dark', Boolean(state.darkMode));
+      document.getElementById('themeToggleBtn').textContent = state.darkMode ? '☀️' : '🌙';
+      document.getElementById('soundToggleBtn').textContent = state.soundEnabled ? '🔊' : '🔇';
+      document.getElementById('streakCount').textContent = state.streak;
+      document.getElementById('headerCouncilLabel').textContent = `${state.councilName} • ${state.postcode}`;
+    }
+
+    function renderHeroAndGuide() {
+      const collection = getActiveCollection();
+      if (!collection) return;
+      const countdown = getCountdownInfo(collection.date);
+      const badgeEl = document.getElementById('countdownBadge');
+      badgeEl.className = `inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${countdown.classes}`;
+      badgeEl.textContent = countdown.label;
+
+      const syncBadge = document.getElementById('heroSyncBadge');
+      const sampleBanner = document.getElementById('sampleModeBanner');
+      if (sampleBanner) sampleBanner.classList.toggle('hidden', state.dataSource === 'live');
+      if (state.dataSource === 'live') {
+        syncBadge.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200';
+        syncBadge.textContent = '🟢 Live Council Feed';
+      } else {
+        syncBadge.className = 'inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200';
+        syncBadge.textContent = '⚠️ Sample Preview';
+      }
+
+      document.getElementById('nextDateHeading').textContent = getFriendlyDateHeading(collection.date);
+      const binNames = collection.bins.map(b => b.name).join(' & ');
+      const completed = state.completedDates[collection.dateKey] || [];
+      const broughtIn = state.broughtInDates[collection.dateKey] || [];
+      const allOut = collection.bins.length > 0 && collection.bins.every(b => completed.includes(b.id));
+      const allBackIn = collection.bins.length > 0 && collection.bins.every(b => broughtIn.includes(b.id));
+
+      document.getElementById('nextBinSummary').textContent = allBackIn
+        ? `🏡 All done! ${binNames} safely back home.`
+        : allOut ? `All sorted! ${binNames} safely at the kerbside.` : `${binNames} due`;
+
+      const primaryColor = (collection.bins[0] && BIN_PALETTES[collection.bins[0].color]) ? BIN_PALETTES[collection.bins[0].color].glow : '#10B981';
+      document.getElementById('heroGlow').style.backgroundColor = primaryColor;
+
+      if (!selectedGuideBinId || !collection.bins.some(b => b.id === selectedGuideBinId)) {
+        selectedGuideBinId = collection.bins[0] ? collection.bins[0].id : null;
+      }
+
+      const chipsEl = document.getElementById('heroBinChips');
+      chipsEl.innerHTML = collection.bins.map(bin => {
+        const pal = BIN_PALETTES[bin.color] || BIN_PALETTES.grey;
+        const isSelected = bin.id === selectedGuideBinId;
+        const isOut = completed.includes(bin.id);
+        return `<button type="button" data-guide-bin="${bin.id}" class="guide-chip flex items-center gap-2 px-3 py-1.5 rounded-2xl text-xs font-bold transition active:scale-95 border-2 ${isSelected ? 'border-emerald-500 shadow-sm' : 'border-transparent'} ${pal.badge}"><span class="w-3 h-3 rounded-full border border-black/20 shrink-0" style="background:${pal.body}"></span><span>${bin.name}</span>${isOut ? '<span class="text-[10px]">✅</span>' : ''}</button>`;
+      }).join('');
+
+      chipsEl.querySelectorAll('.guide-chip').forEach(btn => {
+        btn.addEventListener('click', () => { selectedGuideBinId = btn.dataset.guideBin; renderHeroAndGuide(); });
+      });
+
+      const activeBin = collection.bins.find(b => b.id === selectedGuideBinId) || collection.bins[0];
+      const guideContent = document.getElementById('binGuideContent');
+      if (activeBin) {
+        const pal = BIN_PALETTES[activeBin.color] || BIN_PALETTES.grey;
+        const yesList = (activeBin.yesItems || ['Standard council items']).map(i => `<li class="flex items-start gap-1.5"><span>✅</span><span>${i}</span></li>`).join('');
+        const noList = (activeBin.noItems || ['Batteries or hazardous waste']).map(i => `<li class="flex items-start gap-1.5"><span>❌</span><span>${i}</span></li>`).join('');
+        guideContent.innerHTML = `
+          <div class="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60">
+            <div class="shrink-0">${renderBinSVG(activeBin.color, { size: 46, animate: false, isFestive: isFestiveModeActive() })}</div>
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <p class="font-bold text-sm text-slate-900 dark:text-white">${activeBin.name}</p>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${pal.badge}">${activeBin.summary || 'Collection'}</span>
+              </div>
+              ${activeBin.seasonLabel ? `<p class="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium mt-0.5">🌿 ${activeBin.seasonLabel}</p>` : ''}
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div class="p-3 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-800/40">
+              <p class="font-bold text-emerald-900 dark:text-emerald-200 mb-1.5">Yes please</p>
+              <ul class="space-y-1 text-emerald-900/90 dark:text-emerald-100/90">${yesList}</ul>
+            </div>
+            <div class="p-3 rounded-2xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-800/40">
+              <p class="font-bold text-rose-900 dark:text-rose-200 mb-1.5">No thanks</p>
+              <ul class="space-y-1 text-rose-900/90 dark:text-rose-100/90">${noList}</ul>
+            </div>
+          </div>
+        `;
+      }
+
+      const atmo = getActiveAtmosphere();
+      document.getElementById('councilTipText').innerHTML = (atmo && atmo.theme && atmo.theme.tip) ? atmo.theme.tip : `💡 <strong>Tip:</strong> ${state.tip}`;
+    }
+
+    function spawnDustPuff(x, y) {
+      const dustLayer = document.getElementById('dustLayer');
+      if (!dustLayer) return;
+      const puff = document.createElement('div');
+      puff.className = 'dust-puff';
+      puff.style.left = `${x}px`;
+      puff.style.top = `${y}px`;
+      dustLayer.appendChild(puff);
+      setTimeout(() => puff.remove(), 460);
+    }
+
+    function markBinAtKerb(binId, clientX, clientY) {
+      const collection = getActiveCollection();
+      if (!collection) return;
+      const current = state.completedDates[collection.dateKey] || [];
+      if (!current.includes(binId)) state.completedDates[collection.dateKey] = [...current, binId];
+
+      const allOut = collection.bins.every(b => state.completedDates[collection.dateKey].includes(b.id));
+      if (allOut) {
+        state.hasCompletedFirstRun = true;
+        if (!state.streakAwardedDates[collection.dateKey]) { state.streak += 1; state.streakAwardedDates[collection.dateKey] = true; }
+        SoundFX.playVictory();
+        triggerHaptic([40, 35, 70]);
+        if (isFestiveModeActive()) Confetti.burstFestive(clientX || window.innerWidth / 2, clientY || window.innerHeight * 0.4);
+        else Confetti.burst(clientX || window.innerWidth / 2, clientY || window.innerHeight * 0.4);
+        showToast('🎉 Bins out & ready! Next collection unlocks tomorrow.');
+      } else {
+        SoundFX.playSnapBin();
+        triggerHaptic(30);
+      }
+      saveState(); renderHeaderAndTheme(); renderHeroAndGuide(); renderMiniGame(); renderRemindersTab();
+    }
+
+    function markBinBroughtIn(binId, clientX, clientY) {
+      const collection = getActiveCollection();
+      if (!collection) return;
+      const currentIn = state.broughtInDates[collection.dateKey] || [];
+      if (!currentIn.includes(binId)) state.broughtInDates[collection.dateKey] = [...currentIn, binId];
+
+      const allBackIn = collection.bins.every(b => state.broughtInDates[collection.dateKey].includes(b.id));
+      if (allBackIn) {
+        SoundFX.playVictory();
+        triggerHaptic([30, 30, 60]);
+        Confetti.burst(clientX || window.innerWidth * 0.35, clientY || window.innerHeight * 0.4);
+        showToast('🏡 All bins safely back home! Morning-after nudge auto-skipped.');
+      } else {
+        SoundFX.playSnapBin();
+        triggerHaptic(25);
+      }
+      saveState(); renderHeaderAndTheme(); renderHeroAndGuide(); renderMiniGame(); renderRemindersTab();
+    }
+
+    function renderMiniGame() {
+      const collection = getActiveCollection();
+      const arena = document.getElementById('streetArena');
+      const layer = document.getElementById('draggableBinsLayer');
+      if (!collection || !arena || !layer) return;
+
+      const festive = isFestiveModeActive();
+      const showGuideLabels = !state.hasCompletedFirstRun;
+      const completed = state.completedDates[collection.dateKey] || [];
+      const broughtIn = state.broughtInDates[collection.dateKey] || [];
+      const totalBins = collection.bins.length;
+      const doneCount = collection.bins.filter(b => completed.includes(b.id)).length;
+      const backInCount = collection.bins.filter(b => broughtIn.includes(b.id)).length;
+      const allOut = totalBins > 0 && doneCount === totalBins;
+      const allBackIn = allOut && backInCount === totalBins;
+
+      const progressPill = document.getElementById('gameProgressPill');
+      if (allBackIn) {
+        progressPill.textContent = '🏡 Back home!';
+        progressPill.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200 shrink-0';
+      } else if (allOut) {
+        progressPill.textContent = backInCount > 0 ? `🏡 ${backInCount}/${totalBins} in` : '✅ All out!';
+        progressPill.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 shrink-0';
+      } else {
+        progressPill.textContent = `${doneCount} / ${totalBins} out`;
+        progressPill.className = 'px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 shrink-0';
+      }
+
+      document.getElementById('gameInstruction').textContent = allBackIn
+        ? `Collection complete for ${getShortDateLabel(collection.date)}! Next bin day unlocks tomorrow.`
+        : allOut ? `Sorted at the kerb! After collection, drag bins back left onto your drive.`
+        : (showGuideLabels ? 'Drag each bin from your drive onto the kerbside zone.' : 'Swipe your bins to the kerbside.');
+
+      document.getElementById('drivewayGuideLabel').classList.toggle('hidden', !showGuideLabels || allOut);
+      document.getElementById('swipeHint').classList.toggle('hidden', !showGuideLabels || allOut);
+      document.getElementById('victoryBanner').classList.toggle('hidden', !allOut);
+      document.getElementById('tapMoveBtn').classList.toggle('hidden', allOut);
+      document.getElementById('bringInBtn').classList.toggle('hidden', !allOut || allBackIn);
+      document.getElementById('resetGameBtn').classList.toggle('hidden', doneCount === 0);
+
+      const unlockDate = getDayAfterDate(collection.date);
+      const victoryBanner = document.getElementById('victoryBanner');
+      if (victoryBanner) {
+        const titleEl = victoryBanner.querySelector('p.font-display');
+        if (titleEl) titleEl.textContent = allBackIn ? 'Bins Safely Back Home!' : 'Bins Out & Ready!';
+        victoryBanner.className = `${allOut ? '' : 'hidden '}absolute top-11 left-2.5 right-14 z-20 rounded-2xl ${allBackIn ? 'bg-indigo-600/95' : 'bg-emerald-600/95'} text-white px-3 py-2 shadow-lg flex items-center gap-2 backdrop-blur-sm`;
+      }
+      document.getElementById('victorySubtext').textContent = allBackIn ? `Next bin day unlocks ${getShortDateLabel(unlockDate)}.` : `Lorry been? Drag bins back left or tap Bring Back In.`;
+
+      const kerbZone = document.getElementById('kerbDropZone');
+      const kerbLabel = document.getElementById('kerbZoneLabel');
+      const kerbSub = document.getElementById('kerbZoneSub');
+      if (showGuideLabels && !allOut) {
+        kerbZone.className = 'absolute right-2.5 bottom-10 w-[36%] h-36 rounded-2xl border-2 border-dashed border-emerald-600/80 dark:border-emerald-400/80 bg-emerald-400/20 dark:bg-emerald-500/15 flex flex-col items-center justify-start pt-2 px-1 transition-all duration-200 animate-kerb-pulse pointer-events-none';
+        kerbLabel.classList.remove('hidden'); kerbSub.classList.remove('hidden');
+      } else {
+        kerbZone.className = 'absolute right-2.5 bottom-10 w-[36%] h-36 rounded-2xl border-2 border-transparent bg-transparent flex flex-col items-center justify-start pt-2 px-1 transition-all duration-200 pointer-events-none';
+        kerbLabel.classList.add('hidden'); kerbSub.classList.add('hidden');
+      }
+
+      const pigeon = document.getElementById('pigeonBuddy');
+      if (pigeon) pigeon.style.transform = allOut ? 'translateY(-6px) scale(1.1) rotate(-6deg)' : 'translateY(0) scale(1)';
+
+      layer.innerHTML = '';
+      const arenaRect = arena.getBoundingClientRect();
+      const arenaW = arenaRect.width || 340;
+      const binRatio = totalBins >= 3 ? 0.175 : 0.21;
+      const binSize = Math.round(Math.max(46, Math.min(76, arenaW * binRatio)));
+      const driveStart = Math.max(8, Math.round(arenaW * 0.06));
+      const driveStep = Math.max(24, Math.min(binSize * 0.52, (arenaW * 0.36) / Math.max(1, totalBins)));
+      const kerbStart = Math.round(arenaW * 0.62);
+      const kerbStep = Math.max(20, Math.min(binSize * 0.44, (arenaW * 0.28) / Math.max(1, totalBins)));
+
+      let driveSlot = 0, kerbSlot = 0;
+      collection.bins.forEach((bin) => {
+        const isOut = completed.includes(bin.id);
+        const isBackIn = broughtIn.includes(bin.id);
+        const sitsAtKerb = isOut && !isBackIn;
+
+        const el = document.createElement('div');
+        el.className = 'draggable-bin absolute flex flex-col items-center transition-transform duration-200';
+        el.dataset.binId = bin.id;
+        el.style.width = `${binSize + 10}px`;
+
+        let leftPx, bottomPx;
+        if (sitsAtKerb) { leftPx = Math.min(arenaW - binSize - 6, kerbStart + kerbSlot * kerbStep); bottomPx = 42 + (kerbSlot % 2) * 8; kerbSlot++; }
+        else { leftPx = Math.min(arenaW * 0.52 - binSize * 0.5, driveStart + driveSlot * driveStep); bottomPx = 46 + (driveSlot % 2) * 10; driveSlot++; }
+
+        el.style.left = `${Math.max(4, leftPx)}px`;
+        el.style.bottom = `${bottomPx}px`;
+
+        const binLabelMarkup = showGuideLabels ? `<span class="mt-0.5 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-800 dark:text-slate-100 shadow-sm whitespace-nowrap pointer-events-none">${bin.name}</span>` : '';
+        el.innerHTML = `<div class="bin-svg-wrap pointer-events-none">${renderBinSVG(bin.color, { size: binSize, isOnKerb: isOut || isBackIn, animate: true, isFestive: festive })}</div>${binLabelMarkup}`;
+
+        if (!isOut) attachBinDragHandlers(el, bin, binSize, festive, 'out');
+        else if (allOut && !isBackIn) attachBinDragHandlers(el, bin, binSize, festive, 'in');
+        layer.appendChild(el);
+      });
+    }
+
+    function attachBinDragHandlers(el, bin, binSize, festive, direction = 'out') {
+      const arena = document.getElementById('streetArena');
+      const kerbZone = document.getElementById('kerbDropZone');
+      let isDragging = false, startClientX = 0, startLeft = 0, startBottom = 0, lastX = 0, wheelAngle = 0, lastDustAt = 0;
+
+      el.addEventListener('pointerdown', (e) => {
+        isDragging = true;
+        el.setPointerCapture(e.pointerId);
+        el.classList.add('dragging');
+        el.style.transition = 'none';
+        if (direction === 'out' && state.hasCompletedFirstRun) {
+          kerbZone.classList.add('border-dashed', 'border-emerald-400/70', 'bg-emerald-400/15');
+          kerbZone.classList.remove('border-transparent', 'bg-transparent');
+        }
+        startClientX = e.clientX; startLeft = parseFloat(el.style.left) || 0; startBottom = parseFloat(el.style.bottom) || 46; lastX = e.clientX;
+        const svgWrap = el.querySelector('.bin-svg-wrap');
+        if (svgWrap) svgWrap.innerHTML = renderBinSVG(bin.color, { size: binSize, isDragging: true, wheelAngle, animate: false, isFestive: festive });
+        el.style.transform = direction === 'in' ? 'scale(1.06) rotate(4deg)' : 'scale(1.06) rotate(-4deg)';
+        SoundFX.playPickup();
+        triggerHaptic(12);
+      });
+
+      el.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const arenaRect = arena.getBoundingClientRect();
+        const dx = e.clientX - startClientX;
+        const stepDx = e.clientX - lastX;
+        lastX = e.clientX;
+        const maxLeft = Math.max(20, arenaRect.width - binSize - 8);
+        const newLeft = Math.max(4, Math.min(maxLeft, startLeft + dx));
+        el.style.left = `${newLeft}px`;
+        el.style.bottom = `${startBottom + Math.sin(newLeft * 0.14) * 2.5}px`;
+        wheelAngle += stepDx * 5;
+        const wheelEl = el.querySelector('.bin-wheel');
+        if (wheelEl) wheelEl.style.transform = `rotate(${wheelAngle}deg)`;
+        if (Math.abs(stepDx) > 2) {
+          SoundFX.playWheelTick();
+          const now = Date.now();
+          if (now - lastDustAt > 110) { lastDustAt = now; spawnDustPuff(newLeft + (direction === 'in' ? binSize - 6 : 10), arenaRect.height - startBottom - 10); }
+        }
+        if (direction === 'out') {
+          const inZone = (newLeft + binSize / 2) >= arenaRect.width * 0.56;
+          kerbZone.classList.toggle('bg-emerald-400/35', inZone);
+          kerbZone.classList.toggle('scale-[1.03]', inZone);
+        }
+      });
+
+      const finishDrag = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        el.classList.remove('dragging');
+        kerbZone.classList.remove('bg-emerald-400/35', 'scale-[1.03]');
+        if (direction === 'out' && state.hasCompletedFirstRun) {
+          kerbZone.classList.remove('border-dashed', 'border-emerald-400/70', 'bg-emerald-400/15');
+          kerbZone.classList.add('border-transparent', 'bg-transparent');
+        }
+        const arenaRect = arena.getBoundingClientRect();
+        const binCenterX = (parseFloat(el.style.left) || 0) + binSize / 2;
+        if (direction === 'out' && binCenterX >= arenaRect.width * 0.56) markBinAtKerb(bin.id, e.clientX, e.clientY);
+        else if (direction === 'in' && binCenterX <= arenaRect.width * 0.44) markBinBroughtIn(bin.id, e.clientX, e.clientY);
+        else {
+          el.style.transition = 'left 0.3s cubic-bezier(0.22, 1, 0.36, 1), bottom 0.3s ease, transform 0.25s ease';
+          el.style.left = `${startLeft}px`; el.style.bottom = `${startBottom}px`; el.style.transform = 'scale(1) rotate(0deg)';
+          const svgWrap = el.querySelector('.bin-svg-wrap');
+          if (svgWrap) svgWrap.innerHTML = renderBinSVG(bin.color, { size: binSize, isOnKerb: direction === 'in', animate: true, isFestive: festive });
+        }
+      };
+      el.addEventListener('pointerup', finishDrag);
+      el.addEventListener('pointercancel', finishDrag);
+    }
+
+    function renderScheduleTab() {
+      const schedule = generateUpcomingSchedule(12);
+      const filterChipsEl = document.getElementById('scheduleFilterChips');
+      const listEl = document.getElementById('scheduleList');
+      if (!filterChipsEl || !listEl) return;
+
+      document.getElementById('scheduleSubtitle').textContent = `${state.councilName} (${state.postcode}) • ${state.dataSource === 'live' ? 'Live official dates' : '12-week council cycle'}`;
+      const allBinsMap = new Map();
+      state.bins.forEach(b => allBinsMap.set(b.id, b));
+      schedule.forEach(item => item.bins.forEach(b => { if (!allBinsMap.has(b.id)) allBinsMap.set(b.id, b); }));
+      const chips = [{ id: 'all', name: 'All Bins', color: null }, ...Array.from(allBinsMap.values())];
+      if (!chips.some(c => c.id === scheduleFilterBinId)) scheduleFilterBinId = 'all';
+
+      filterChipsEl.innerHTML = chips.map(c => {
+        const active = c.id === scheduleFilterBinId;
+        const pal = c.color ? (BIN_PALETTES[c.color] || BIN_PALETTES.grey) : null;
+        return `<button type="button" data-filter-bin="${c.id}" class="sched-filter-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${active ? 'bg-slate-900 text-white dark:bg-emerald-500 dark:text-slate-950 shadow-sm' : 'bg-slate-100 dark:bg-slate-700/70 text-slate-700 dark:text-slate-200'}">${pal ? `<span class="w-2.5 h-2.5 rounded-full border border-black/20" style="background:${pal.body}"></span>` : ''}<span>${c.name}</span></button>`;
+      }).join('');
+      filterChipsEl.querySelectorAll('.sched-filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => { scheduleFilterBinId = btn.dataset.filterBin; renderScheduleTab(); });
+      });
+
+      const filtered = schedule.filter(item => scheduleFilterBinId === 'all' || item.bins.some(b => b.id === scheduleFilterBinId));
+      listEl.innerHTML = filtered.map((item) => {
+        const isCurrent = item.weekIndex === 0;
+        const isXmasDate = item.date.getMonth() === 11 && item.date.getDate() === 25;
+        const completed = state.completedDates[item.dateKey] || [];
+        const allOut = item.bins.length > 0 && item.bins.every(b => completed.includes(b.id));
+        const prevItem = schedule[item.weekIndex - 1];
+        const unlockDate = prevItem ? getDayAfterDate(prevItem.date) : null;
+        const binBadges = item.bins.map(b => {
+          const pal = BIN_PALETTES[b.color] || BIN_PALETTES.grey;
+          return `<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold ${pal.badge}"><span class="w-2.5 h-2.5 rounded-full border border-black/20" style="background:${pal.body}"></span>${b.name}</span>`;
+        }).join('');
+        return `
+          <div class="rounded-3xl bg-white dark:bg-slate-800/90 border ${isCurrent ? 'border-emerald-400 dark:border-emerald-500/70 ring-2 ring-emerald-500/15' : 'border-slate-200/80 dark:border-slate-700/80'} shadow-soft p-4">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <p class="font-display font-bold text-base text-slate-900 dark:text-white">${getFriendlyDateHeading(item.date)}</p>
+                  ${isCurrent ? '<span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">Next Up</span>' : ''}
+                  ${isXmasDate ? '<span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900/60 dark:text-red-200">🎄 Christmas Day</span>' : ''}
+                </div>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">${isXmasDate ? 'Check council feed for festive Bank Holiday shift' : `Put out before ${state.putOutBefore}`}</p>
+              </div>
+              <div class="shrink-0">
+                ${isCurrent ? (allOut ? '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">✅ Out</span>' : '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">Active</span>') : `<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">🔒 Unlocks ${unlockDate ? getShortDateLabel(unlockDate) : 'later'}</span>`}
+              </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mt-3">${binBadges}${item.hasWinterPause ? '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-semibold bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200/70 dark:border-sky-800/60">❄️ Garden Bin Paused</span>' : ''}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderRemindersTab() {
+      document.getElementById('eveTimeInput').value = state.reminders.eveTime || '18:00';
+      document.getElementById('eveToggle').checked = Boolean(state.reminders.eveEnabled);
+      document.getElementById('morningTimeInput').value = state.reminders.morningTime || '05:30';
+      document.getElementById('morningToggle').checked = Boolean(state.reminders.morningEnabled);
+      document.getElementById('bringInEveTimeInput').value = state.reminders.bringInEveTime || '18:00';
+      document.getElementById('bringInEveToggle').checked = Boolean(state.reminders.bringInEveEnabled);
+      document.getElementById('bringInMorningTimeInput').value = state.reminders.bringInMorningTime || '08:00';
+      document.getElementById('bringInMorningToggle').checked = Boolean(state.reminders.bringInMorningEnabled);
+      document.getElementById('smartSkipToggle').checked = Boolean(state.reminders.smartSkip);
+
+      const activeCol = getActiveCollection();
+      const completed = activeCol ? (state.completedDates[activeCol.dateKey] || []) : [];
+      const broughtIn = activeCol ? (state.broughtInDates[activeCol.dateKey] || []) : [];
+      const allOut = activeCol && activeCol.bins.length > 0 && activeCol.bins.every(b => completed.includes(b.id));
+      const allBackIn = activeCol && activeCol.bins.length > 0 && activeCol.bins.every(b => broughtIn.includes(b.id));
+
+      document.getElementById('morningStatusNote').textContent = (allOut && state.reminders.smartSkip) ? '✨ Auto-skipped for this collection (bins already at kerb!)' : 'Final nudge before the lorry arrives';
+      document.getElementById('bringInMorningStatusNote').textContent = (allBackIn && state.reminders.smartSkip) ? '✨ Auto-skipped for this collection (bins safely back home!)' : 'Friendly nudge so bins aren\'t left on the kerb';
+
+      document.querySelectorAll('.device-preview-btn').forEach(btn => {
+        const active = btn.dataset.device === state.reminders.previewDevice;
+        btn.className = `device-preview-btn px-2 py-2 rounded-xl text-[11px] font-bold transition ${active ? 'bg-white text-slate-900 shadow' : 'text-slate-200 hover:bg-white/10'}`;
+      });
+
+      const notifText = document.getElementById('realNotifStatusText');
+      if (notifText && 'Notification' in window) {
+        if (Notification.permission === 'granted') notifText.textContent = '✅ Push Notifications Enabled';
+        else if (Notification.permission === 'denied') notifText.textContent = 'Notifications Blocked in Browser Settings';
+        else notifText.textContent = 'Enable Real Device Push Notifications';
+      }
+    }
+
+    function renderCouncilTab() {
+      const postcodeInput = document.getElementById('postcodeInput');
+      if (postcodeInput && !postcodeInput.value) postcodeInput.value = state.postcode;
+
+      const sourcePill = document.getElementById('councilSourcePill');
+      const lockBadge = document.getElementById('councilLockBadge');
+      if (state.dataSource === 'live') {
+        sourcePill.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 shrink-0';
+        sourcePill.textContent = '🟢 Live';
+        lockBadge.className = 'text-[11px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-full';
+        lockBadge.textContent = '🟢 Official Council Feed';
+      } else {
+        sourcePill.className = 'px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200 shrink-0';
+        sourcePill.textContent = '⚠️ Sample';
+        lockBadge.className = 'text-[11px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-1 rounded-full';
+        lockBadge.textContent = '⚠️ Sample Preview';
+      }
+
+      document.getElementById('propertyAddressNote').innerHTML = state.dataSource === 'live'
+        ? `<strong>🟢 Connected:</strong> Showing official live dates for <strong>${state.councilName} (${state.postcode})</strong> — last synced at ${state.lastSyncedAt}.`
+        : `<strong>No fake street addresses:</strong> Real UK house addresses &amp; exact bin days come from your council feed (<code class="font-semibold">schedule.json</code> via GitHub Actions + your private UPRN, or the nationwide <code class="font-semibold">UKBinCollectionData</code> API).`;
+
+      const quickEl = document.getElementById('quickCouncilPills');
+      if (quickEl) {
+        quickEl.innerHTML = Object.values(UK_COUNCILS).map(c => {
+          const isCurrent = state.councilId === c.id && state.dataSource !== 'live';
+          return `<button type="button" data-council-id="${c.id}" class="quick-council-btn shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition ${isCurrent ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 dark:bg-slate-700/70 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'}">${c.name.replace(' City Council', '').replace(' Council', '')}</button>`;
+        }).join('');
+        quickEl.querySelectorAll('.quick-council-btn').forEach(btn => btn.addEventListener('click', () => selectCouncilPreset(btn.dataset.councilId)));
+      }
+
+      const activeCol = getActiveCollection();
+      document.getElementById('lockedDayLabel').textContent = (state.dataSource === 'live' && activeCol) ? `${WEEKDAY_NAMES[activeCol.date.getDay()]}s` : `${WEEKDAY_NAMES[state.collectionDay]}s`;
+      document.getElementById('lockedTimeLabel').textContent = `${state.putOutBefore} AM`;
+
+      const binsListEl = document.getElementById('councilBinsList');
+      if (binsListEl) {
+        const displayBins = state.dataSource === 'live' && activeCol
+          ? (() => { const map = new Map(); generateUpcomingSchedule(12).forEach(s => s.bins.forEach(b => { if (!map.has(b.id)) map.set(b.id, b); })); return Array.from(map.values()); })()
+          : state.bins;
+        binsListEl.innerHTML = displayBins.map(bin => {
+          const pal = BIN_PALETTES[bin.color] || BIN_PALETTES.grey;
+          const freqText = bin.freqWeeks ? (bin.freqWeeks === 1 ? 'Weekly' : `Every ${bin.freqWeeks} weeks`) : 'Official council feed';
+          return `<div class="flex items-center justify-between gap-2 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700/60"><div class="flex items-center gap-2.5 min-w-0"><span class="w-4 h-4 rounded-full border border-black/20 shrink-0" style="background:${pal.body}"></span><div class="min-w-0"><p class="font-bold text-xs text-slate-900 dark:text-white truncate">${bin.name}</p><p class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${bin.summary || 'Collection'}${bin.seasonLabel ? ` • ${bin.seasonLabel}` : ''}</p></div></div><span class="text-[10px] font-bold px-2 py-1 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shrink-0">${freqText}</span></div>`;
+        }).join('');
+      }
+
+      document.getElementById('liveApiUrlInput').value = state.liveApiUrl || '';
+      document.getElementById('resetDemoModeBtn').classList.toggle('hidden', state.dataSource !== 'live');
+      document.getElementById('liveConnectorStatus').textContent = state.dataSource === 'live'
+        ? `Status: 🟢 Live Council Feed active (${state.councilName} • ${state.postcode}) — synced ${state.lastSyncedAt}.`
+        : `Ready to sync with ./schedule.json on GitHub Pages or a nationwide UK council API.`;
+    }
+
+    function selectCouncilPreset(councilId, preferredPostcode = null) {
+      const preset = UK_COUNCILS[councilId];
+      if (!preset) return;
+      document.getElementById('postcodeNoticeBox').classList.add('hidden');
+      let chosenAddr = preset.addresses[0];
+      if (preferredPostcode) {
+        const clean = preferredPostcode.replace(/\s+/g, '').toUpperCase();
+        const exact = preset.addresses.find(a => a.postcode.replace(/\s+/g, '').toUpperCase() === clean);
+        if (exact) chosenAddr = exact;
+      }
+      state.councilId = preset.id; state.councilName = preset.name; state.lat = preset.lat; state.lon = preset.lon;
+      state.postcode = chosenAddr.postcode; state.addressId = chosenAddr.id;
+      state.putOutBefore = preset.putOutBefore; state.tip = preset.tip;
+      state.collectionDay = chosenAddr.collectionDay; state.cycleOffset = chosenAddr.cycleOffset;
+      state.bins = JSON.parse(JSON.stringify(preset.bins)); state.dataSource = 'local'; state.liveScheduleEntries = null;
+      selectedGuideBinId = null;
+      document.getElementById('postcodeInput').value = state.postcode;
+      saveState(); renderAll(); fetchLiveWeather();
+      showToast(`🇬🇧 Loaded ${preset.name} (${state.postcode})`);
+    }
+
+    async function handlePostcodeLookup() {
+      const input = document.getElementById('postcodeInput');
+      const noticeBox = document.getElementById('postcodeNoticeBox');
+      if (!input || !noticeBox) return;
+      const raw = input.value.trim().toUpperCase();
+      const compact = raw.replace(/\s+/g, '');
+      if (compact.length < 4) { showToast('Please enter a full UK postcode (e.g. S74 9BG).'); return; }
+      for (const council of Object.values(UK_COUNCILS)) {
+        const exactAddr = council.addresses.find(a => a.postcode.replace(/\s+/g, '').toUpperCase() === compact);
+        if (exactAddr) { selectCouncilPreset(council.id, exactAddr.postcode); return; }
+      }
+      noticeBox.classList.remove('hidden');
+      noticeBox.innerHTML = `<p class="font-semibold">🔍 Checking official UK council for <strong>${raw}</strong>…</p>`;
+      try {
+        const res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(compact)}`);
+        if (!res.ok) throw new Error('Postcode not found');
+        const info = (await res.json()).result;
+        if (!info) throw new Error('No result');
+        const councilName = info.admin_district || 'Your Local Council';
+        const formattedPostcode = info.postcode || raw;
+        const cutoff = resolveCouncilCutoffTime(councilName);
+        if (typeof info.latitude === 'number' && typeof info.longitude === 'number') { state.lat = info.latitude; state.lon = info.longitude; fetchLiveWeather(); }
+        noticeBox.innerHTML = `<p class="font-bold">✅ Found council: ${councilName} (${formattedPostcode}) • Put out before ${cutoff} AM</p><p class="leading-relaxed">Connect your GitHub <code class="px-1 rounded bg-amber-200/60 dark:bg-amber-900">schedule.json</code> or nationwide <code class="px-1 rounded bg-amber-200/60 dark:bg-amber-900">UKBinCollectionData</code> API below to load official dates for ${formattedPostcode}.</p><a href="https://www.gov.uk/rubbish-collection-day" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 font-bold underline text-amber-950 dark:text-amber-100">Check official GOV.UK council finder ↗</a>`;
+      } catch (err) {
+        noticeBox.innerHTML = `<p class="font-bold">⚠️ Could not verify "${raw}" right now.</p><p>Check the postcode spelling, pick a built-in council below, or connect your live council feed.</p>`;
+      }
+    }
+
+    function applyLiveSchedulePayload(payload, sourceUrl = '') {
+      const binsArr = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.bins) ? payload.bins : null);
+      if (!binsArr || binsArr.length === 0) throw new Error('No "bins" array found in council JSON.');
+      const councilName = (payload && payload.council) ? payload.council : state.councilName;
+      state.dataSource = 'live'; state.liveScheduleEntries = binsArr; state.liveApiUrl = sourceUrl;
+      state.councilName = councilName; state.postcode = (payload && payload.postcode) ? payload.postcode : state.postcode;
+      state.putOutBefore = resolveCouncilCutoffTime(councilName, payload && payload.putOutBefore);
+      state.tip = `${councilName} collects from ${state.putOutBefore} AM. Place bins neatly at the kerbside with lids closed.`;
+      state.lastSyncedAt = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      selectedGuideBinId = null;
+      saveState(); renderAll();
+    }
+
+    async function tryAutoLoadGitHubSchedule() {
+      const metaFeedEl = document.querySelector('meta[name="bin-buddy-feed-url"]');
+      const metaFeedUrl = metaFeedEl ? metaFeedEl.getAttribute('content').trim() : '';
+      const candidateUrls = [];
+      if (state.liveApiUrl && /^https?:\/\//i.test(state.liveApiUrl)) candidateUrls.push(state.liveApiUrl);
+      if (metaFeedUrl && /^https?:\/\//i.test(metaFeedUrl) && !candidateUrls.includes(metaFeedUrl)) candidateUrls.push(metaFeedUrl);
+      if (window.location.protocol === 'http:' || window.location.protocol === 'https:') candidateUrls.push('./schedule.json');
+
+      for (const feedUrl of candidateUrls) {
+        try {
+          const res = await fetch(feedUrl, { cache: 'no-store' });
+          if (!res.ok) continue;
+          applyLiveSchedulePayload(await res.json(), feedUrl);
+          return;
+        } catch (err) {}
+      }
+    }
+
+    function switchTab(tabName) {
+      activeTab = tabName;
+      document.querySelectorAll('.tab-panel').forEach(panel => panel.classList.toggle('hidden', panel.id !== `tab-${tabName}`));
+      document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+        const isCurrent = btn.dataset.tab === tabName;
+        btn.className = isCurrent
+          ? 'nav-tab-btn flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 transition'
+          : 'nav-tab-btn flex flex-col items-center justify-center py-1.5 px-1 rounded-2xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition';
+      });
+      if (tabName === 'home') { renderWeatherScene(); renderMiniGame(); }
+      else if (tabName === 'schedule') renderScheduleTab();
+      else if (tabName === 'reminders') renderRemindersTab();
+      else if (tabName === 'council') renderCouncilTab();
+    }
+
+    function renderAll() {
+      renderHeaderAndTheme(); renderHeroAndGuide(); renderWeatherScene(); renderMiniGame();
+      renderScheduleTab(); renderRemindersTab(); renderCouncilTab();
+    }
+
+    function initApp() {
+      Confetti.init();
+      try {
+        if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')) {
+          navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+      } catch (e) {}
+
+      document.querySelectorAll('.nav-tab-btn').forEach(btn => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
+      document.getElementById('headerCouncilBtn').addEventListener('click', () => switchTab('council'));
+      document.getElementById('bannerConnectBtn').addEventListener('click', () => switchTab('council'));
+
+      document.getElementById('soundToggleBtn').addEventListener('click', () => {
+        state.soundEnabled = !state.soundEnabled; saveState(); renderHeaderAndTheme();
+        showToast(state.soundEnabled ? '🔊 Sound effects on' : '🔇 Sound effects muted');
+      });
+      document.getElementById('themeToggleBtn').addEventListener('click', () => {
+        state.darkMode = !state.darkMode; saveState(); renderHeaderAndTheme(); renderWeatherScene();
+      });
+      document.getElementById('weatherBadgeBtn').addEventListener('click', () => { weatherTrayOpen = !weatherTrayOpen; renderWeatherScene(); });
+
+      document.getElementById('pigeonBuddy').addEventListener('click', () => {
+        const p = document.getElementById('pigeonBuddy');
+        if (p) { p.style.transform = 'translateY(-10px) scale(1.12)'; setTimeout(() => { p.style.transform = ''; }, 260); }
+        SoundFX.playPickup(); triggerHaptic(15);
+        const atmo = getActiveAtmosphere();
+        const messages = {
+          rain: '🐦 Coo! Glad I brought my brolly for bin day!',
+          christmas: '🐦 Coo! Happy Christmas from the kerbside!',
+          snow: '🐦 Brrr! Good job I’ve got my scarf on!',
+          sunny: '🐦 Coo! Looking sharp in my shades!',
+          windy: '🐦 Whoa, hold onto your bin lids!',
+          spring: '🐦 Coo! Loving the spring blossoms!'
+        };
+        showToast(messages[atmo.scene] || '🐦 Coo! Ready to inspect your bin placement!');
+      });
+
+      document.getElementById('replayChristmasBtn').addEventListener('click', () => showChristmasEasterEgg(true));
+      document.getElementById('christmasCelebrateBtn').addEventListener('click', () => {
+        Confetti.burstFestive(window.innerWidth / 2, window.innerHeight * 0.35);
+        SoundFX.playChristmasJingle(); triggerHaptic([35, 35, 70]);
+      });
+      document.getElementById('closeChristmasBtn').addEventListener('click', closeChristmasEasterEgg);
+      document.getElementById('christmasOverlay').addEventListener('click', (e) => { if (e.target.id === 'christmasOverlay') closeChristmasEasterEgg(); });
+
+      document.getElementById('quickNotifTestBtn').addEventListener('click', () => triggerRichNotification('eve'));
+
+      document.getElementById('tapMoveBtn').addEventListener('click', () => {
+        const col = getActiveCollection();
+        if (!col) return;
+        const done = state.completedDates[col.dateKey] || [];
+        const nextBin = col.bins.find(b => !done.includes(b.id));
+        if (nextBin) markBinAtKerb(nextBin.id, window.innerWidth * 0.65, window.innerHeight * 0.42);
+      });
+
+      document.getElementById('bringInBtn').addEventListener('click', () => {
+        const col = getActiveCollection();
+        if (!col) return;
+        const broughtIn = state.broughtInDates[col.dateKey] || [];
+        const nextBin = col.bins.find(b => !broughtIn.includes(b.id));
+        if (nextBin) markBinBroughtIn(nextBin.id, window.innerWidth * 0.35, window.innerHeight * 0.42);
+      });
+
+      document.getElementById('resetGameBtn').addEventListener('click', () => {
+        const col = getActiveCollection();
+        if (!col) return;
+        delete state.completedDates[col.dateKey]; delete state.broughtInDates[col.dateKey];
+        saveState(); renderHeroAndGuide(); renderMiniGame(); renderRemindersTab();
+        showToast('↺ Reset bins onto the driveway.');
+      });
+
+      document.getElementById('exportIcsScheduleBtn').addEventListener('click', exportScheduleToICS);
+      document.getElementById('exportIcsAlertsBtn').addEventListener('click', exportScheduleToICS);
+
+      document.querySelectorAll('.device-preview-btn').forEach(btn => {
+        btn.addEventListener('click', () => { state.reminders.previewDevice = btn.dataset.device; saveState(); renderRemindersTab(); });
+      });
+
+      document.getElementById('previewEveNotifBtn').addEventListener('click', () => triggerRichNotification('eve'));
+      document.getElementById('previewMorningNotifBtn').addEventListener('click', () => triggerRichNotification('morning'));
+      document.getElementById('previewBringInEveBtn').addEventListener('click', () => triggerRichNotification('bringInEve'));
+      document.getElementById('previewBringInMorningBtn').addEventListener('click', () => triggerRichNotification('bringInMorning'));
+
+      document.getElementById('enableRealNotifBtn').addEventListener('click', async () => {
+        if (!('Notification' in window)) { showToast('Use the Calendar (.ics) export below for alerts on this browser!'); return; }
+        try {
+          const perm = await Notification.requestPermission();
+          renderRemindersTab();
+          if (perm === 'granted') { showToast('✅ Push notifications enabled!'); triggerRichNotification('eve'); }
+          else showToast('Notifications were not enabled — you can use the .ics backup below!');
+        } catch (err) { showToast('Use the Calendar (.ics) button below for universal alerts!'); }
+      });
+
+      document.getElementById('eveTimeInput').addEventListener('change', (e) => { state.reminders.eveTime = e.target.value; saveState(); });
+      document.getElementById('eveToggle').addEventListener('change', (e) => { state.reminders.eveEnabled = e.target.checked; saveState(); });
+      document.getElementById('morningTimeInput').addEventListener('change', (e) => { state.reminders.morningTime = e.target.value; saveState(); });
+      document.getElementById('morningToggle').addEventListener('change', (e) => { state.reminders.morningEnabled = e.target.checked; saveState(); });
+      document.getElementById('bringInEveTimeInput').addEventListener('change', (e) => { state.reminders.bringInEveTime = e.target.value; saveState(); });
+      document.getElementById('bringInEveToggle').addEventListener('change', (e) => { state.reminders.bringInEveEnabled = e.target.checked; saveState(); });
+      document.getElementById('bringInMorningTimeInput').addEventListener('change', (e) => { state.reminders.bringInMorningTime = e.target.value; saveState(); });
+      document.getElementById('bringInMorningToggle').addEventListener('change', (e) => { state.reminders.bringInMorningEnabled = e.target.checked; saveState(); });
+      document.getElementById('smartSkipToggle').addEventListener('change', (e) => { state.reminders.smartSkip = e.target.checked; saveState(); renderRemindersTab(); });
+
+      document.getElementById('lookupPostcodeBtn').addEventListener('click', handlePostcodeLookup);
+      document.getElementById('postcodeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') handlePostcodeLookup(); });
+
+      document.getElementById('connectLiveApiBtn').addEventListener('click', async () => {
+        const url = document.getElementById('liveApiUrlInput').value.trim();
+        if (!url) { showToast('Paste a UKBinCollectionData API or schedule.json URL first.'); return; }
+        try {
+          showToast('⚡ Syncing live council feed…');
+          const res = await fetch(url, { cache: 'no-store' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          applyLiveSchedulePayload(await res.json(), url);
+          showToast('🟢 Live council schedule synced!');
+        } catch (err) { showToast(`Could not load feed (${err.message}). Check CORS & URL.`); }
+      });
+
+      document.getElementById('resetDemoModeBtn').addEventListener('click', () => selectCouncilPreset('barnsley', 'S74 9BG'));
+
+      const streetArena = document.getElementById('streetArena');
+      if (streetArena && typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(() => { if (activeTab === 'home') renderMiniGame(); }).observe(streetArena);
+      }
+
+      renderAll();
+      fetchLiveWeather();
+      tryAutoLoadGitHubSchedule();
+
+      if (isRealChristmasDay()) {
+        setTimeout(() => showChristmasEasterEgg(false), 650);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
