@@ -1,0 +1,76 @@
+name: Update Live UK Council Bin Schedule
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-bins:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install UKBinCollectionData
+        run: |
+          python -m pip install --upgrade pip
+          pip install uk_bin_collection
+
+      - name: Fetch live council dates
+        env:
+          COUNCIL_PARSER: ${{ secrets.COUNCIL_PARSER }}
+          COUNCIL_URL: ${{ secrets.COUNCIL_URL }}
+          BIN_UPRN: ${{ secrets.BIN_UPRN }}
+          BIN_POSTCODE: ${{ secrets.BIN_POSTCODE }}
+          COUNCIL_DISPLAY_NAME: ${{ secrets.COUNCIL_DISPLAY_NAME }}
+        run: |
+          python - << 'EOF'
+          import json, os, subprocess, sys
+          from datetime import datetime, timezone
+
+          parser = os.environ.get("COUNCIL_PARSER") or "BarnsleyMBCouncil"
+          url = os.environ.get("COUNCIL_URL") or "https://waste.barnsley.gov.uk/ViewCollection/Collections"
+          uprn = os.environ["BIN_UPRN"]
+          postcode = os.environ["BIN_POSTCODE"]
+          council_name = os.environ.get("COUNCIL_DISPLAY_NAME") or "Barnsley Council"
+
+          cmd = [
+            sys.executable, "-m", "uk_bin_collection.uk_bin_collection.collect_data",
+            parser, url, "-s", "-u", uprn, "-p", postcode
+          ]
+          raw = subprocess.check_output(cmd, text=True).strip()
+
+          json_start = raw.find("{")
+          data = json.loads(raw[json_start:])
+
+          output = {
+            "council": council_name,
+            "postcode": postcode,
+            "putOutBefore": "06:00",
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "bins": data.get("bins", [])
+          }
+
+          with open("schedule.json", "w", encoding="utf-8") as f:
+            json.dump(output, f, indent=2)
+
+          print(f"Saved {len(output['bins'])} live bin entries to schedule.json")
+          EOF
+
+      - name: Commit updated schedule.json
+        run: |
+          git config user.name "Bin Buddy Bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add schedule.json
+          git diff --staged --quiet || git commit -m "Update live council bin schedule"
+          git pull --rebase
+          git push
