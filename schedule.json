@@ -1,0 +1,20 @@
+{
+  "council": "Barnsley Council",
+  "postcode": "S74 9BG ",
+  "putOutBefore": "06:00",
+  "updatedAt": "2026-11-27T13:15:57.869066+00:00",
+  "bins": [
+    {
+      "type": "Grey bin",
+      "collectionDate": "27/11/2026"
+    },
+    {
+      "type": "Blue bin",
+      "collectionDate": "04/12/2026"
+    },
+    {
+      "type": "Brown bin",
+      "collectionDate": "18/12/2026"
+    }
+  ]
+}
