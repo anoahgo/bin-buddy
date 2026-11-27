@@ -1,0 +1,9 @@
+{
+  "appId": "uk.binbuddy.app",
+  "appName": "Bin Buddy",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#0F172A"
+  }
+}
